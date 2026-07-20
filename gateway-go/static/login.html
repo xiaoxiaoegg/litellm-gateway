@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token 中转站 — 登录</title>
+
+  <!-- ====== 外部依赖 ====== -->
+  <!-- Tailwind CSS (CDN): 整个项目的样式框架，通过 tailwind.config 扩展颜色 -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Alpine.js (CDN): 轻量级响应式框架，驱动登录/注册表单的交互逻辑 -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Inter 字体: 项目唯一的正文字体，清晰、现代、在数据密集场景下可读性好 -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ====== Tailwind 主题配置 ======
+       扩展了默认颜色：
+       - fontFamily.sans: Inter → 系统回退字体
+       - accent 色板: teal 青色系 (50-900)，用作主按钮、链接、聚焦环
+         基准色 accent-600 = #0d9488
+         修改方法: 替换所有 9 个色值即可全局换肤 -->
+  <script>tailwind.config={theme:{extend:{fontFamily:{sans:['Inter','-apple-system','BlinkMacSystemFont','Segoe UI','Roboto','Helvetica Neue','Arial','sans-serif']},colors:{accent:{50:'#f0fdfa',100:'#ccfbf1',200:'#99f6e4',300:'#5eead4',400:'#2dd4bf',500:'#14b8a6',600:'#0d9488',700:'#0f766e',800:'#115e59',900:'#134e4a'}}}}}</script>
+
+  <style>
+    /* Alpine.js 隐藏未初始化的模板，防止页面闪烁 */
+    [x-cloak] { display: none !important; }
+
+    /* 输入框聚焦样式: teal 色外发光环 */
+    .form-input:focus { box-shadow: 0 0 0 3px rgba(13,148,136,0.12); outline: none; border-color: #0d9488; }
+
+    /* 卡片入场动画: 登录/注册切换时微微上浮 */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+    .card-enter { animation: fadeUp 0.3s ease; }
+  </style>
+</head>
+
+<!--
+  页面布局: 居中单卡片
+  - bg-[#fafaf8]: 暖白背景，不是纯白也不是 cream 色
+  - x-cloak: 防止 Alpine 初始化前显示原始模板
+-->
+<body class="bg-[#fafaf8] min-h-screen flex items-center justify-center p-4" x-cloak>
+
+  <!-- ====== Alpine.js 组件: loginApp() ======
+        管理登录/注册两个表单的状态切换和提交逻辑
+        - showRegister: false=登录 / true=注册
+        - form: 双向绑定的用户名和密码
+        - login() / register(): 调用 /api/auth/login 或 /register，拿到 token 后跳转到首页 -->
+  <div x-data="loginApp()" class="w-full max-w-[400px]">
+
+    <!-- ====== 品牌区 ======
+         闪电图标 + 标题 + 副标题，纯展示，无交互 -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center justify-center w-11 h-11 rounded-lg bg-accent-600 shadow-sm mb-5">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <h1 class="text-2xl font-bold text-[#141413] tracking-tight">Token 中转站</h1>
+      <p class="text-sm text-[#737373] mt-1.5">AI API 统一网关 &amp; 管理平台</p>
+    </div>
+
+    <!-- ====== 登录表单 ======
+         showRegister === false 时显示
+         POST /api/auth/login → 返回 { access_token, role } 存入 localStorage 后跳转首页 -->
+    <template x-if="!showRegister">
+      <div class="bg-white rounded-md border border-[#e5e5e3] p-8 shadow-sm card-enter">
+        <h2 class="text-base font-semibold text-[#141413] mb-6">登录账号</h2>
+        <!-- @submit.prevent 阻止表单默认提交，调用 login() 用 fetch 发送 -->
+        <form @submit.prevent="login" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-[#737373] mb-1.5">用户名</label>
+            <!-- x-model="form.username": 双向绑定到 Alpine 数据 -->
+            <input type="text" x-model="form.username" required
+              class="form-input block w-full px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[#737373] mb-1.5">密码</label>
+            <input type="password" x-model="form.password" required
+              class="form-input block w-full px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+          </div>
+          <!-- 错误消息: 后端返回 detail 字段时显示 -->
+          <p x-show="error" x-text="error" class="text-sm text-[#dc2626] bg-red-50 rounded-md px-3 py-2.5"></p>
+          <!-- 提交按钮: loading 为 true 时禁用并显示"登录中..." -->
+          <button type="submit" :disabled="loading"
+            class="w-full bg-accent-600 text-white py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 disabled:opacity-50 transition-colors"
+            x-text="loading ? '登录中...' : '登 录'"></button>
+          <!-- 切换到注册表单: 设置 showRegister=true 并清空错误 -->
+          <p class="text-center text-sm text-[#a3a3a3] pt-1">
+            没有账号？<a @click="showRegister=true;error=''" class="text-accent-600 hover:text-accent-700 font-medium cursor-pointer">立即注册</a>
+          </p>
+        </form>
+      </div>
+    </template>
+
+    <!-- ====== 注册表单 ======
+         showRegister === true 时显示
+         POST /api/auth/register → 返回 { access_token, role } 存入 localStorage 后跳转首页
+         后端校验: 用户名 ≥3 位，密码 ≥6 位 -->
+    <template x-if="showRegister">
+      <div class="bg-white rounded-md border border-[#e5e5e3] p-8 shadow-sm card-enter">
+        <h2 class="text-base font-semibold text-[#141413] mb-6">注册账号</h2>
+        <form @submit.prevent="register" class="space-y-4">
+          <div>
+            <label class="block text-xs font-medium text-[#737373] mb-1.5">用户名</label>
+            <input type="text" x-model="form.username" required minlength="3"
+              class="form-input block w-full px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-[#737373] mb-1.5">密码</label>
+            <input type="password" x-model="form.password" required minlength="6"
+              class="form-input block w-full px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+          </div>
+          <p x-show="error" x-text="error" class="text-sm text-[#dc2626] bg-red-50 rounded-md px-3 py-2.5"></p>
+          <button type="submit" :disabled="loading"
+            class="w-full bg-accent-600 text-white py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 disabled:opacity-50 transition-colors"
+            x-text="loading ? '注册中...' : '注 册'"></button>
+          <p class="text-center text-sm text-[#a3a3a3] pt-1">
+            已有账号？<a @click="showRegister=false;error=''" class="text-accent-600 hover:text-accent-700 font-medium cursor-pointer">去登录</a>
+          </p>
+        </form>
+      </div>
+    </template>
+  </div>
+
+  <!-- ====== JavaScript 逻辑 ======
+       loginApp() 函数定义 Alpine 组件数据和方法:
+       
+       状态变量:
+       - showRegister: 控制登录/注册表单切换
+       - loading: 提交中状态，用于禁用按钮
+       - error: 错误消息，后端返回或网络异常时设置
+       - form: { username, password } 双向绑定的表单数据
+       
+       方法:
+       - login():  调用 POST /api/auth/login，成功后存 token 和 role 到 localStorage
+       - register(): 调用 POST /api/auth/register，成功后同上
+       
+       认证流程:
+       1. 用户提交表单 → fetch 调用后端 API
+       2. 后端返回 { access_token, user_id, username, role }
+       3. 前端将 token 和 role 存入 localStorage
+       4. 跳转到 / (首页 index.html)，首页从 localStorage 读取 token -->
+  <script>
+    function loginApp() {
+      return {
+        showRegister: false, loading: false, error: '',
+        form: { username: '', password: '' },
+
+        // 登录: POST /api/auth/login
+        async login() {
+          this.loading = true; this.error = '';
+          try {
+            const res = await fetch('/api/auth/login', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify(this.form)
+            });
+            const data = await res.json();
+            if (!res.ok) { this.error = data.detail; return; }
+            // 认证成功 → 存 token，跳转首页
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('role', data.role);
+            window.location.href = '/';
+          } catch(e) { this.error = '网络错误，请检查服务状态'; }
+          finally { this.loading = false; }
+        },
+
+        // 注册: POST /api/auth/register
+        async register() {
+          this.loading = true; this.error = '';
+          try {
+            const res = await fetch('/api/auth/register', {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify(this.form)
+            });
+            const data = await res.json();
+            if (!res.ok) { this.error = data.detail; return; }
+            localStorage.setItem('token', data.access_token);
+            localStorage.setItem('role', data.role);
+            window.location.href = '/';
+          } catch(e) { this.error = '网络错误，请检查服务状态'; }
+          finally { this.loading = false; }
+        }
+      };
+    }
+  </script>
+</body>
+</html>

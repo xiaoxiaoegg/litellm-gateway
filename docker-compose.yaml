@@ -1,0 +1,123 @@
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - litellm
+    restart: always
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      - DATABASE_URL=postgresql://llmproxy:dbpassword9090@db:5432/litellm
+      - STORE_MODEL_IN_DB=True
+      - PROMETHEUS_AUTH=false
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; req=urllib.request.Request('http://localhost:4000/health',headers={'Authorization':'Bearer sk-1qaz@WSX@123456'});exit(0 if urllib.request.urlopen(req).status==200 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+  gateway-go:
+    build: ./gateway-go
+    ports:
+      - "8000:8000"
+    environment:
+      - LITELLM_BASE_URL=http://litellm:4000
+      - LITELLM_API_KEY=${LITELLM_MASTER_KEY}
+      - APP_DATABASE_URL=postgresql://llmproxy:dbpassword9090@db:5432/litellm
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  db:
+    image: postgres:16
+    restart: always
+    container_name: litellm_db
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: llmproxy
+      POSTGRES_PASSWORD: dbpassword9090
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backup:/backup
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmproxy -d litellm"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  backup:
+    image: postgres:16
+    command: >
+      sh -c "while true; do
+        pg_dump -h db -U llmproxy -d litellm > /backup/backup_$(date +%Y%m%d_%H%M%S).sql
+        find /backup -name 'backup_*.sql' -mtime +7 -delete
+        sleep 86400
+      done"
+    environment:
+      PGPASSWORD: dbpassword9090
+    volumes:
+      - ./backup:/backup
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    depends_on:
+      - litellm
+    restart: always
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    depends_on:
+      - prometheus
+    restart: always
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:

@@ -1,0 +1,1431 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token 中转站</title>
+
+  <!-- ====== 外部依赖 ====== -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- Chart.js: 数据看板的图表渲染库 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ====== Tailwind 主题配置 ======
+       扩展了:
+       - fontFamily: Inter (正文) + 系统等宽 (数据列)
+       - accent 色板: teal 青色系 (#0d9488 基准)
+         修改此处所有 9 个色值即可全局换肤
+         sidebar 颜色直接写在 className 中 (#141413, #1c1c1a, #f5f5f3) -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          },
+          colors: {
+            accent: {
+              50: '#f0fdfa', 100: '#ccfbf1', 200: '#99f6e4', 300: '#5eead4',
+              400: '#2dd4bf', 500: '#14b8a6', 600: '#0d9488', 700: '#0f766e',
+              800: '#115e59', 900: '#134e4a'
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- ====== 自定义 CSS ====== -->
+  <style>
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+    [x-cloak] { display: none !important; }
+
+    /* ---- 侧边栏导航项 ----
+       默认: 透明左边框 + 灰色文字
+       悬停: 深灰背景 + 白色文字
+       激活 (.active): 深灰背景 + teal 左边框 + 白色文字
+       margin-left 负值使左边框贴到侧边栏边缘 */
+    .nav-item {
+      transition: all 0.15s ease;
+      border-left: 2px solid transparent;
+      margin-left: -16px; padding-left: 14px;
+    }
+    .nav-item:hover { background: #1c1c1a; color: #f5f5f3; }
+    .nav-item.active { background: #1c1c1a; color: #f5f5f3; border-left-color: #0d9488; }
+
+    /* ---- 脉冲点动画 (签名元素) ----
+       激活的导航项右侧显示一个 teal 小圆点，
+       通过 ::after 伪元素制造脉冲扩散效果 */
+    .nav-item.active .pulse-dot::after {
+      content: '';
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      background: #0d9488;
+      opacity: 0.35;
+      animation: pulse-ring 2s ease-out infinite;
+    }
+    @keyframes pulse-ring {
+      0%   { transform: scale(0.8); opacity: 0.5; }
+      50%  { transform: scale(2.0); opacity: 0.0; }
+      100% { transform: scale(0.8); opacity: 0.0; }
+    }
+
+    /* ---- 统计卡片 ----
+       悬停时微微抬高阴影 */
+    .stat-card { transition: box-shadow 0.2s ease; }
+    .stat-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+
+    /* ---- 数据表格 ----
+       首尾列固定内边距，行悬停变色 */
+    .data-table th { white-space: nowrap; }
+    .data-table td { white-space: nowrap; }
+    .data-table td:first-child, .data-table th:first-child { padding-left: 1.25rem; }
+    .data-table td:last-child, .data-table th:last-child { padding-right: 1.25rem; }
+    .data-table tbody tr { transition: background-color 0.08s ease; }
+
+    /* ---- Toast 通知 ----
+       从右侧滑入，3 秒后自动消失 */
+    .toast { animation: toastIn 0.25s ease; }
+    @keyframes toastIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+    /* ---- 骨架屏加载 ----
+       shimmer 动画模拟内容加载中的占位效果 */
+    .skeleton { background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ---- 输入框聚焦环 ----
+       teal 色外发光，与 accent 色板一致 */
+    .input-focus:focus { box-shadow: 0 0 0 3px rgba(13,148,136,0.12); outline: none; border-color: #0d9488; }
+  </style>
+</head>
+
+<!--
+  页面整体结构: 全高 flex 容器
+  - 左侧固定宽度侧边栏 (w-56)
+  - 右侧弹性主内容区
+  - x-data="app()": 整个页面由 app() 函数驱动
+  - x-cloak: 防止 Alpine 初始化前显示 {{ }} 占位符
+-->
+<body class="bg-[#fafaf8] min-h-screen" x-data="app()" x-cloak>
+
+  <!-- ==================================================================
+       SECTION: 未登录状态
+       当 localStorage 中没有 token 时显示
+       只展示一个居中的引导卡片，引导用户去 /login.html
+       ================================================================== -->
+  <template x-if="!token">
+    <div class="min-h-screen flex items-center justify-center bg-[#fafaf8]">
+      <div class="text-center">
+        <div class="w-12 h-12 mx-auto mb-5 rounded-lg bg-accent-600 flex items-center justify-center shadow-sm">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.75" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <p class="text-[#737373] text-sm mb-5">请先登录以访问管理面板</p>
+        <a href="/login.html" class="inline-block bg-accent-600 text-white px-5 py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 transition-colors">去登录</a>
+      </div>
+    </div>
+  </template>
+
+  <!-- ==================================================================
+       SECTION: 已登录状态
+       token 存在时显示完整的 SPA 布局:
+       侧边栏 (左侧) + 主内容区 (右侧)
+       ================================================================== -->
+  <template x-if="token">
+    <div class="flex min-h-screen">
+
+      <!-- ================================================================
+           SIDEBAR 侧边栏
+           - 固定宽度 224px (w-56)
+           - 背景色 #141413 (暖深灰，比纯黑柔和)
+           - 包含: 品牌区 + 用户导航 + 管理员导航 + 用户信息
+           ================================================================ -->
+      <aside class="w-56 bg-[#141413] flex flex-col flex-shrink-0">
+
+        <!-- 品牌区: logo + 应用名 -->
+        <div class="h-14 flex items-center px-4 border-b border-white/[0.05]">
+          <div class="w-7 h-7 rounded-md bg-accent-600 flex items-center justify-center mr-2.5">
+            <svg class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          </div>
+          <span class="text-white font-semibold text-sm tracking-tight">Token 中转站</span>
+        </div>
+
+        <!-- 导航区: 用户菜单 + (管理员菜单，仅 admin 可见) -->
+        <nav class="flex-1 py-3 space-y-0.5 px-4 overflow-y-auto">
+          <!-- ---- 用户导航项 ----
+               由 userTabs getter 动态生成 (概览 / API Keys / 交易记录 / 使用记录)
+               点击切换 currentTab，点击"概览"时自动刷新数据 -->
+          <template x-for="tab in userTabs" :key="tab.id">
+            <a @click="currentTab=tab.id; if(tab.id==='dashboard') refreshStats(); if(tab.id==='admin-dashboard-viz') loadStatsAndRender()"
+              :class="currentTab===tab.id ? 'nav-item active' : 'nav-item'"
+              class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer text-[#6b7280]">
+              <span class="relative inline-flex items-center justify-center w-4 h-4" x-html="tab.icon"></span>
+              <span x-text="tab.label"></span>
+              <!-- 脉冲点: 仅在当前激活项显示 -->
+              <span x-show="currentTab===tab.id" class="pulse-dot relative w-1.5 h-1.5 rounded-full bg-accent-500 ml-auto"></span>
+            </a>
+          </template>
+
+          <!-- ---- 管理员分隔线 ----
+               仅 role==='admin' 时显示，将用户菜单和管理菜单视觉分隔 -->
+          <template x-if="role==='admin'">
+            <div class="mt-5 mb-2">
+              <span class="block px-3 text-[11px] font-semibold uppercase tracking-widest text-[#6b7280]/40">管理</span>
+            </div>
+          </template>
+
+          <!-- ---- 管理员导航项 ----
+               由 adminTabs getter 动态生成 (用户管理 / 上游 Key / 模型定价)
+               仅 role==='admin' 时 adminTabs 有内容 -->
+          <template x-for="tab in adminTabs" :key="tab.id">
+            <a @click="currentTab=tab.id"
+              :class="currentTab===tab.id ? 'nav-item active' : 'nav-item'"
+              class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer text-[#6b7280]">
+              <span class="relative inline-flex items-center justify-center w-4 h-4" x-html="tab.icon"></span>
+              <span x-text="tab.label"></span>
+              <span x-show="currentTab===tab.id" class="pulse-dot relative w-1.5 h-1.5 rounded-full bg-accent-500 ml-auto"></span>
+            </a>
+          </template>
+        </nav>
+
+        <!-- 用户信息区: 头像 + 用户名 + 积分余额 + 退出按钮 -->
+        <div class="border-t border-white/[0.05] p-3">
+          <div class="flex items-center gap-2.5">
+            <div class="w-7 h-7 rounded-full bg-accent-600 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">A</div>
+            <div class="flex-1 min-w-0">
+              <p class="text-xs text-white font-medium truncate">Admin</p>
+              <!-- userBalance 是 /api/auth/me 返回的余额 -->
+              <p class="text-[11px] text-[#6b7280]" x-text="'积分 ' + userBalance.toFixed(0)"></p>
+            </div>
+            <!-- 退出按钮: 清除 localStorage 并跳转到首页 (触发未登录状态) -->
+            <button @click="logout()" class="text-[#6b7280] hover:text-red-400 transition-colors flex-shrink-0" title="退出登录">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H6a2 2 0 01-2-2V7a2 2 0 012-2h5a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- ================================================================
+           MAIN CONTENT 主内容区
+           - 弹性宽度，超出滚动
+           - 内部 max-w-6xl 居中
+           - currentTab 控制显示哪个面板 (dashboard/keys/transactions/usage/admin-*)
+           ================================================================ -->
+      <main class="flex-1 overflow-auto">
+        <div class="max-w-6xl mx-auto px-5 py-5">
+
+          <!-- ====== 骨架屏 (数据加载中) ======
+               loading 为 true 时显示，模拟页面结构避免布局跳动 -->
+          <div x-show="loading" class="space-y-5">
+            <div class="skeleton h-5 w-28 rounded"></div>
+            <div class="grid grid-cols-4 gap-4">
+              <div class="skeleton h-24 rounded-md"></div><div class="skeleton h-24 rounded-md"></div>
+              <div class="skeleton h-24 rounded-md"></div><div class="skeleton h-24 rounded-md"></div>
+            </div>
+            <div class="skeleton h-64 rounded-md"></div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 概览 (Dashboard)
+               显示 4 个统计卡片 + 最近 8 条使用记录
+               数据来源: /api/auth/me (余额), /api/keys, /api/usage, /api/admin/users
+               ================================================================== -->
+          <div x-show="currentTab === 'dashboard' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">概览</h2>
+            <p class="text-sm text-[#737373] mb-5">系统运行状况与用量统计</p>
+
+            <!-- ---- 统计卡片 ----
+                 每个卡片: 顶部彩色细条 + 标签 + 大数字
+                 颜色: teal(积分) / amber(消耗) / emerald(Keys) / sky(用户数)
+                 tabular-nums: 数字等宽对齐，防止刷新时宽度跳变 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-accent-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">可用积分</p>
+                  <p class="text-2xl font-bold text-[#141413] tabular-nums" x-text="userBalance.toFixed(2)"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-amber-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">今日消耗</p>
+                  <!-- todayCost 在 loadData() 中根据 transactions 计算 -->
+                  <p class="text-2xl font-bold text-amber-600 tabular-nums" x-text="todayCost.toFixed(2)"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-emerald-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">API Keys</p>
+                  <p class="text-2xl font-bold text-emerald-600 tabular-nums" x-text="userKeys.length"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-sky-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">总用户数</p>
+                  <p class="text-2xl font-bold text-sky-600 tabular-nums" x-text="allUsers.length"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- 最近使用记录 ----
+                 截取 usageRecords 前 8 条显示
+                 列: 时间 | 模型名 | Token数 | 消耗积分 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <div class="px-5 py-3.5 border-b border-[#f0f0ee] flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-[#141413]">最近使用记录</h3>
+                <span class="text-[11px] text-[#a3a3a3]">最近 8 条</span>
+              </div>
+              <table class="data-table w-full text-sm" x-show="usageRecords.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">时间</th><th class="text-left py-2.5">模型</th>
+                    <th class="text-right py-2.5">Tokens</th><th class="text-right py-2.5">消耗</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="r in usageRecords.slice(0,8)" :key="r.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-[11px] text-[#737373] font-mono" x-text="formatTime(r.created_at)"></td>
+                      <td class="py-2.5"><span class="inline-flex items-center bg-[#f0f0ee] text-[#141413] text-[11px] px-2 py-0.5 rounded font-mono" x-text="r.model_name"></span></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] tabular-nums" x-text="r.total_tokens.toLocaleString()"></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] text-[#dc2626] tabular-nums" x-text="'-'+r.cost.toFixed(4)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="usageRecords.length === 0" class="text-center py-12 text-sm text-[#a3a3a3]">
+                <svg class="w-8 h-8 mx-auto mb-2 text-[#e5e5e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+                暂无使用记录
+              </p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: API Keys
+               管理用户的 API 访问密钥: 创建 / 查看 / 启用禁用 / 删除
+               API: POST /api/keys (创建), GET /api/keys (列表),
+                    PATCH /api/keys/:id/toggle (切换状态), DELETE /api/keys/:id (删除)
+               ================================================================== -->
+          <div x-show="currentTab === 'keys' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">API Keys</h2>
+            <p class="text-sm text-[#737373] mb-5">管理你的 API 访问密钥</p>
+
+            <!-- 创建 Key 表单 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5 mb-5">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3.5">创建新 Key</h3>
+              <div class="flex gap-2.5">
+                <input type="text" x-model="newKeyName" placeholder="输入 Key 名称..."
+                  class="flex-1 input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <button @click="createKey()" class="bg-accent-600 text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 transition-colors flex-shrink-0">创建</button>
+              </div>
+              <!-- 创建成功后显示完整 Key (仅此一次可见) -->
+              <div x-show="newKeyResult" class="mt-4 p-4 bg-amber-50 border border-amber-200/80 rounded-md">
+                <p class="text-sm font-medium text-amber-800 mb-2">Key 创建成功 — 请立即复制，关闭后无法再次查看：</p>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 block text-xs bg-white px-3 py-2 rounded border border-amber-200 break-all font-mono select-all" x-text="newKeyResult"></code>
+                  <button @click="copyText(newKeyResult)" class="flex-shrink-0 text-xs bg-amber-600 text-white px-3 py-2 rounded-md hover:bg-amber-700 transition-colors">复制</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Key 列表 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <table class="data-table w-full text-sm" x-show="userKeys.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">名称</th><th class="text-left py-2.5">Key 前缀</th>
+                    <th class="text-center py-2.5">状态</th><th class="text-left py-2.5">最后使用</th>
+                    <th class="text-right py-2.5">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="k in userKeys" :key="k.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-sm font-medium text-[#141413]" x-text="k.key_name"></td>
+                      <td class="py-2.5 font-mono text-[11px] text-[#737373]" x-text="k.key_prefix+'...'"></td>
+                      <td class="py-2.5 text-center">
+                        <!-- 状态标签: 启用=绿色 / 禁用=红色 -->
+                        <span :class="k.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-[#dc2626] border-red-200'"
+                          class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium"
+                          x-text="k.is_active ? '启用' : '已禁用'"></span>
+                      </td>
+                      <td class="py-2.5 text-[11px] text-[#a3a3a3]" x-text="formatTime(k.last_used_at) || '从未使用'"></td>
+                      <td class="py-2.5 text-right space-x-3">
+                        <button @click="toggleKey(k.id)" :class="k.is_active ? 'text-[#737373] hover:text-[#141413]' : 'text-emerald-600 hover:text-emerald-700'"
+                          class="text-[11px] font-medium transition-colors" x-text="k.is_active ? '禁用' : '启用'"></button>
+                        <button @click="deleteKey(k.id)" class="text-[11px] font-medium text-[#dc2626] hover:text-red-600 transition-colors">删除</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="userKeys.length === 0" class="text-center py-12 text-sm text-[#a3a3a3]">
+                <svg class="w-8 h-8 mx-auto mb-2 text-[#e5e5e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>
+                暂无 API Key
+              </p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 交易记录 (Transactions)
+               显示积分充值 / 消费 / 调整的记录
+               API: GET /api/transactions → { transactions: [...] }
+               ================================================================== -->
+          <div x-show="currentTab === 'transactions' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">交易记录</h2>
+            <p class="text-sm text-[#737373] mb-5">积分充值 &amp; 消费明细</p>
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <table class="data-table w-full text-sm" x-show="transactions.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">时间</th><th class="text-center py-2.5">类型</th>
+                    <th class="text-right py-2.5">金额</th><th class="text-left py-2.5">说明</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="t in transactions" :key="t.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-[11px] text-[#737373] font-mono" x-text="formatTime(t.created_at)"></td>
+                      <td class="py-2.5 text-center">
+                        <!-- 类型标签: 充值=绿 / 消费=红 / 调整=黄 -->
+                        <span :class="{ 'bg-emerald-50 text-emerald-700 border-emerald-200': t.type === 'recharge', 'bg-red-50 text-[#dc2626] border-red-200': t.type === 'deduct', 'bg-amber-50 text-amber-700 border-amber-200': t.type === 'admin_adjust' }"
+                          class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium"
+                          x-text="t.type === 'recharge' ? '充值' : t.type === 'deduct' ? '消费' : '调整'"></span>
+                      </td>
+                      <!-- 金额: 正数绿色 / 负数红色 -->
+                      <td :class="t.amount > 0 ? 'text-emerald-600' : 'text-[#dc2626]'" class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="(t.amount > 0 ? '+' : '') + t.amount.toFixed(2)"></td>
+                      <td class="py-2.5 text-[11px] text-[#a3a3a3]" x-text="t.description || '-'"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="transactions.length === 0" class="text-center py-12 text-sm text-[#a3a3a3]">
+                <svg class="w-8 h-8 mx-auto mb-2 text-[#e5e5e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                暂无交易记录
+              </p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 使用记录 (Usage)
+               显示 API 调用的详细 Token 消耗: Prompt / Completion / Total / 消耗积分
+               API: GET /api/usage → { usage: [...] }
+               ================================================================== -->
+          <div x-show="currentTab === 'usage' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">使用记录</h2>
+            <p class="text-sm text-[#737373] mb-5">API 调用 &amp; Token 消耗明细</p>
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <table class="data-table w-full text-sm" x-show="usageRecords.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">时间</th><th class="text-left py-2.5">模型</th>
+                    <th class="text-right py-2.5">Prompt</th><th class="text-right py-2.5">Completion</th>
+                    <th class="text-right py-2.5">总计</th><th class="text-right py-2.5">消耗</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="r in usageRecords" :key="r.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-[11px] text-[#737373] font-mono" x-text="formatTime(r.created_at)"></td>
+                      <td class="py-2.5"><span class="inline-flex items-center bg-[#f0f0ee] text-[#141413] text-[11px] px-2 py-0.5 rounded font-mono" x-text="r.model_name"></span></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] tabular-nums" x-text="r.prompt_tokens.toLocaleString()"></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] tabular-nums" x-text="r.completion_tokens.toLocaleString()"></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] font-semibold tabular-nums" x-text="r.total_tokens.toLocaleString()"></td>
+                      <td class="py-2.5 text-right font-mono text-[11px] text-[#dc2626] tabular-nums" x-text="'-'+r.cost.toFixed(4)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="usageRecords.length === 0" class="text-center py-12 text-sm text-[#a3a3a3]">
+                <svg class="w-8 h-8 mx-auto mb-2 text-[#e5e5e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                暂无使用记录
+              </p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 用户管理 (Admin Only)
+               创建用户 + 查看所有用户 + 充值/扣减积分
+               API: GET /api/admin/users, POST /api/admin/users,
+                    POST /api/admin/users/:id/recharge, POST /api/admin/users/:id/deduct
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-users' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">用户管理</h2>
+            <p class="text-sm text-[#737373] mb-5">创建用户 &amp; 管理配额</p>
+            <!-- 创建用户表单: 用户名 + 密码 + 初始积分 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5 mb-5">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3.5">创建新用户</h3>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                <input type="text" x-model="adminForm.username" placeholder="用户名"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <input type="password" x-model="adminForm.password" placeholder="密码"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <input type="number" x-model="adminForm.balance" placeholder="初始积分"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <button @click="createUser()" class="bg-accent-600 text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 transition-colors">创建用户</button>
+              </div>
+            </div>
+            <!-- 用户列表 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <table class="data-table w-full text-sm" x-show="allUsers.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">用户名</th><th class="text-right py-2.5">积分</th>
+                    <th class="text-center py-2.5">Keys</th><th class="text-right py-2.5">总消费</th>
+                    <th class="text-center py-2.5">角色</th><th class="text-right py-2.5">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="u in allUsers" :key="u.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-sm font-medium text-[#141413]" x-text="u.username"></td>
+                      <td class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="u.balance.toFixed(2)"></td>
+                      <td class="py-2.5 text-center text-xs" x-text="u.key_count"></td>
+                      <td class="py-2.5 text-right font-mono text-xs text-[#dc2626] tabular-nums" x-text="u.total_spent.toFixed(2)"></td>
+                      <td class="py-2.5 text-center">
+                        <span :class="u.role === 'admin' ? 'bg-accent-50 text-accent-700 border-accent-200' : 'bg-[#f0f0ee] text-[#737373] border-[#e5e5e3]'"
+                          class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium"
+                          x-text="u.role === 'admin' ? '管理员' : '用户'"></span>
+                      </td>
+                      <td class="py-2.5 text-right space-x-3">
+                        <button @click="rechargeUser(u.id)" class="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 transition-colors">充值</button>
+                        <button @click="deductUser(u.id)" class="text-[11px] font-medium text-[#dc2626] hover:text-red-600 transition-colors">扣减</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 上游 Key (Admin Only)
+               管理第三方 LLM API Key 池: 每个上游 Key 绑定一个模型 + API Key
+               API: GET /api/admin/upstream-keys, POST /api/admin/upstream-keys,
+                    DELETE /api/admin/upstream-keys/:id
+               包含: 国内大模型参考表 (modelProviders)，方便查找 API Key 申请地址
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-upstream' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">上游 Key</h2>
+            <p class="text-sm text-[#737373] mb-5">管理第三方 API Key 池</p>
+
+            <!-- 添加上游 Key 表单:
+                 模型名 (带 datalist 提示) + API Key + 账号名称 + 优先级 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5 mb-5">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3.5">添加上游 Key</h3>
+              <div class="grid grid-cols-1 md:grid-cols-5 gap-2.5">
+                <!-- 模型名: 带 datalist，列出所有已知国内模型供选择 -->
+                <input type="text" x-model="upstreamForm.model_name" placeholder="模型名 (见下方参考表)" list="upstream-model-list"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <datalist id="upstream-model-list">
+                  <template x-for="m in modelProviders" :key="m.name">
+                    <option :value="m.name" x-bind:label="m.provider"></option>
+                  </template>
+                </datalist>
+                <input type="text" x-model="upstreamForm.api_key" placeholder="API Key"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <input type="text" x-model="upstreamForm.account_name" placeholder="账号名称"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <input type="number" x-model="upstreamForm.priority" placeholder="优先级"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <button @click="addUpstreamKey()" class="bg-accent-600 text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 transition-colors">添加</button>
+              </div>
+            </div>
+
+            <!-- 已配置的上游 Key 列表 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden mb-5">
+              <table class="data-table w-full text-sm" x-show="upstreamKeys.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">模型</th><th class="text-left py-2.5">账号</th>
+                    <th class="text-center py-2.5">优先级</th><th class="text-center py-2.5">已用量</th>
+                    <th class="text-center py-2.5">配额</th><th class="text-center py-2.5">状态</th>
+                    <th class="text-right py-2.5">操作</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="k in upstreamKeys" :key="k.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-sm font-medium text-[#141413] font-mono" x-text="k.model_name"></td>
+                      <td class="py-2.5 text-xs text-[#737373]" x-text="k.account_name"></td>
+                      <td class="py-2.5 text-center text-xs tabular-nums" x-text="k.priority"></td>
+                      <td class="py-2.5 text-center font-mono text-[11px] tabular-nums" x-text="k.used_quota.toLocaleString()"></td>
+                      <td class="py-2.5 text-center font-mono text-[11px]" x-text="k.total_quota ? k.total_quota.toLocaleString() : '不限'"></td>
+                      <td class="py-2.5 text-center">
+                        <span :class="k.is_active ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-red-50 text-[#dc2626] border-red-200'"
+                          class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium"
+                          x-text="k.is_active ? '启用' : '已禁用'"></span>
+                      </td>
+                      <td class="py-2.5 text-right">
+                        <button @click="deleteUpstreamKey(k.id)" class="text-[11px] font-medium text-[#dc2626] hover:text-red-600 transition-colors">删除</button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="upstreamKeys.length === 0" class="text-center py-10 text-sm text-[#a3a3a3]">
+                <svg class="w-8 h-8 mx-auto mb-2 text-[#e5e5e3]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                暂无上游 Key
+              </p>
+            </div>
+
+            <!-- ========== 国内大模型供应商参考表 ==========
+                 列出目前市面上可接的主要国内开源/商业大模型，
+                 包含提供商名称、API Key 申请地址、OpenAI 兼容 Base URL。
+                 
+                 使用方法:
+                 1. 在上方"添加上游 Key"区域输入模型名 (可从 datalist 选择)
+                 2. 点击"API Key 获取地址"列中的链接，去对应平台注册并获取 API Key
+                 3. 将获取的 API Key 和 Base URL 填入上游 Key 表单
+                 4. 去"模型定价"标签页为模型设置积分价格
+                 5. 去"API Keys"标签页创建用户 Key，即可开始使用
+                 
+                 如需添加新模型: 在 JavaScript 的 modelProviders 数组中追加条目即可 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <div class="px-5 py-3.5 border-b border-[#f0f0ee] flex items-center justify-between">
+                <h3 class="text-sm font-semibold text-[#141413]">国内大模型参考</h3>
+                <span class="text-[11px] text-[#a3a3a3]" x-text="modelProviders.length + ' 个模型'"></span>
+              </div>
+              <!-- 搜索框: 实时过滤模型列表 -->
+              <div class="px-5 py-3 border-b border-[#f0f0ee]">
+                <input type="text" x-model="modelSearch" placeholder="搜索模型名或供应商..."
+                  class="input-focus w-full px-3 py-2 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+              </div>
+              <div class="overflow-x-auto">
+                <table class="data-table w-full text-sm">
+                  <thead>
+                    <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                      <th class="text-left py-2.5">模型名</th>
+                      <th class="text-left py-2.5">供应商</th>
+                      <th class="text-left py-2.5">简介</th>
+                      <th class="text-left py-2.5">API Key 获取地址</th>
+                      <th class="text-right py-2.5">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-[#f0f0ee]">
+                    <!-- 过滤: 根据 modelSearch 匹配模型名或供应商名 -->
+                    <template x-for="m in modelProviders.filter(f => !modelSearch || f.name.toLowerCase().includes(modelSearch.toLowerCase()) || f.provider.toLowerCase().includes(modelSearch.toLowerCase()))" :key="m.name">
+                      <tr class="hover:bg-[#fafaf8]">
+                        <td class="py-2.5 text-sm font-medium text-[#141413] font-mono whitespace-nowrap" x-text="m.name"></td>
+                        <td class="py-2.5 text-xs text-[#737373] whitespace-nowrap" x-text="m.provider"></td>
+                        <td class="py-2.5 text-[11px] text-[#a3a3a3]" x-text="m.note"></td>
+                        <!-- hub 链接: 新窗口打开 API Key 申请页面 -->
+                        <td class="py-2.5 text-[11px] max-w-[320px] truncate">
+                          <a :href="m.hub" target="_blank" rel="noopener"
+                            class="text-accent-600 hover:text-accent-700 underline underline-offset-2 transition-colors inline-block max-w-full truncate"
+                            x-text="m.hub"></a>
+                        </td>
+                        <td class="py-2.5 text-right whitespace-nowrap">
+                          <!-- "填入表单"按钮: 将模型名填入上游 Key 表单的 model_name 字段 -->
+                          <button @click="upstreamForm.model_name=m.name;window.scrollTo({top:0,behavior:'smooth'})"
+                            class="text-[11px] font-medium text-accent-600 hover:text-accent-700 transition-colors">填入表单</button>
+                        </td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 模型定价 (Admin Only)
+               为每个模型设置 Prompt / Completion 的积分单价 (每 1K tokens)
+               API: GET /api/admin/pricing, POST /api/admin/pricing
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-pricing' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">模型定价</h2>
+            <p class="text-sm text-[#737373] mb-5">设置各模型的积分消耗定价</p>
+
+            <!-- 设置定价表单: 模型名 (带 datalist) + Prompt 单价 + Completion 单价 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5 mb-5">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3.5">设置定价</h3>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+                <input type="text" x-model="pricingForm.model_name" placeholder="模型名" list="pricing-model-list"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <datalist id="pricing-model-list">
+                  <template x-for="m in modelProviders" :key="m.name">
+                    <option :value="m.name" x-bind:label="m.provider"></option>
+                  </template>
+                </datalist>
+                <input type="number" step="0.001" x-model="pricingForm.prompt" placeholder="Prompt 价格 / 1K tokens"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <input type="number" step="0.001" x-model="pricingForm.completion" placeholder="Completion 价格 / 1K"
+                  class="input-focus px-3 py-2.5 border border-[#e5e5e3] rounded-md text-sm text-[#141413] placeholder:text-[#a3a3a3] transition-colors">
+                <button @click="setPricing()" class="bg-accent-600 text-white px-4 py-2.5 rounded-md text-sm font-medium hover:bg-accent-700 transition-colors">保存定价</button>
+              </div>
+            </div>
+
+            <!-- 已配置的定价列表 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+              <table class="data-table w-full text-sm" x-show="pricingList.length > 0">
+                <thead>
+                  <tr class="bg-[#fafaf8] text-[11px] text-[#737373] font-medium uppercase tracking-wider">
+                    <th class="text-left py-2.5">模型</th>
+                    <th class="text-right py-2.5">Prompt 单价</th>
+                    <th class="text-right py-2.5">Completion 单价</th>
+                    <th class="text-center py-2.5">货币</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-[#f0f0ee]">
+                  <template x-for="p in pricingList" :key="p.id">
+                    <tr class="hover:bg-[#fafaf8]">
+                      <td class="py-2.5 text-sm font-medium text-[#141413] font-mono" x-text="p.model_name"></td>
+                      <td class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="p.prompt_price_per_1k.toFixed(4)"></td>
+                      <td class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="p.completion_price_per_1k.toFixed(4)"></td>
+                      <td class="py-2.5 text-center text-xs" x-text="p.currency === 'points' ? '积分' : p.currency"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 数据看板 (admin-dashboard-viz)
+               可视化统计: 统计卡片 + 每日趋势折线图 + 模型消耗分布甜甜圈图 + 模型明细进度条
+               数据来源: loadStatsAndRender() → /api/admin/stats (admin) 或本地聚合 (普通用户)
+               图表渲染: renderCharts() 将内容画到 #chart-daily-trend / #chart-model-dist 两个 canvas
+               注意: 该 tab 点击时已在导航里触发 loadStatsAndRender()，这里只需放置挂载点
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-dashboard-viz' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">数据看板</h2>
+            <p class="text-sm text-[#737373] mb-5">用量趋势与模型消耗可视化</p>
+
+            <!-- ---- 统计卡片: 今日请求 / 今日 Tokens / 今日消耗 / 本周请求 ----
+                 数据来自 statsData (loadStatsAndRender 填充)，用可选链防止空对象报错 -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-sky-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">今日请求</p>
+                  <p class="text-2xl font-bold text-[#141413] tabular-nums" x-text="(statsData.today?.total_requests || 0).toLocaleString()"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-violet-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">今日 Tokens</p>
+                  <p class="text-2xl font-bold text-[#141413] tabular-nums" x-text="(statsData.today?.total_tokens || 0).toLocaleString()"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-amber-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">今日消耗</p>
+                  <p class="text-2xl font-bold text-amber-600 tabular-nums" x-text="'-' + (statsData.today?.total_cost || 0).toFixed(2)"></p>
+                </div>
+              </div>
+              <div class="stat-card bg-white rounded-md border border-[#e5e5e3] overflow-hidden">
+                <div class="h-0.5 bg-accent-500"></div>
+                <div class="p-5 pt-[calc(1.25rem-2px)]">
+                  <p class="text-xs font-medium text-[#737373] uppercase tracking-wide mb-3">本周请求</p>
+                  <p class="text-2xl font-bold text-[#141413] tabular-nums" x-text="(statsData.week?.total_requests || 0).toLocaleString()"></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- ---- 图表区: 左折线图(2列宽) + 右甜甜圈图(1列宽) ----
+                 canvas 的 id 必须与 renderCharts() 中 getElementById 的字符串一致 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              <div class="bg-white rounded-md border border-[#e5e5e3] p-5 lg:col-span-2">
+                <h3 class="text-sm font-semibold text-[#141413] mb-4">每日 Token 消耗趋势</h3>
+                <div class="relative h-64"><canvas id="chart-daily-trend"></canvas></div>
+              </div>
+              <div class="bg-white rounded-md border border-[#e5e5e3] p-5">
+                <h3 class="text-sm font-semibold text-[#141413] mb-4">模型消耗分布</h3>
+                <div class="relative h-64"><canvas id="chart-model-dist"></canvas></div>
+              </div>
+            </div>
+
+            <!-- ---- 模型消耗明细: 每条模型一行，进度条表示占总额的比例 ----
+                 modelDistTotal getter 提供总额，computeModelDistribution() 返回按消耗降序的数组 -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden mt-4">
+              <div class="px-5 py-3.5 border-b border-[#f0f0ee]">
+                <h3 class="text-sm font-semibold text-[#141413]">模型消耗明细</h3>
+              </div>
+              <div class="p-5 space-y-3">
+                <template x-for="m in computeModelDistribution()" :key="m.name">
+                  <div class="flex items-center gap-3">
+                    <span class="text-xs font-mono text-[#141413] w-36 truncate" x-text="m.name" :title="m.name"></span>
+                    <div class="flex-1 h-2 rounded-full bg-[#f0f0ee] overflow-hidden">
+                      <div class="h-full rounded-full bg-accent-500 transition-all" :style="'width:' + (modelDistTotal ? (m.cost / modelDistTotal * 100) : 0) + '%'"></div>
+                    </div>
+                    <span class="text-xs font-mono text-[#dc2626] tabular-nums w-20 text-right" x-text="'-' + m.cost.toFixed(2)"></span>
+                  </div>
+                </template>
+                <p x-show="computeModelDistribution().length === 0" class="text-center text-sm text-[#a3a3a3] py-4">暂无使用数据</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 使用指南 (guide)
+               提供 curl / python / node 三种接入示例，一键复制
+               并说明 Claude Code / Codex 如何通过本网关接入
+               语言切换: guideLang (curl|python|node)
+               示例代码: curlSample() / pySample() / nodeSample()
+               ================================================================== -->
+          <div x-show="currentTab === 'guide' && !loading">
+            <h2 class="text-lg font-bold text-[#141413] mb-0.5">使用指南</h2>
+            <p class="text-sm text-[#737373] mb-5">通过本网关调用模型的接入示例</p>
+
+            <!-- ---- 语言切换标签 ---- -->
+            <div class="flex gap-1 mb-4 bg-[#f0f0ee] inline-flex p-1 rounded-md">
+              <button @click="guideLang='curl'"   :class="guideLang==='curl'   ? 'bg-white text-[#141413] shadow-sm' : 'text-[#737373]'" class="px-4 py-1.5 rounded text-sm font-medium transition-colors">cURL</button>
+              <button @click="guideLang='python'" :class="guideLang==='python' ? 'bg-white text-[#141413] shadow-sm' : 'text-[#737373]'" class="px-4 py-1.5 rounded text-sm font-medium transition-colors">Python</button>
+              <button @click="guideLang='node'"   :class="guideLang==='node'   ? 'bg-white text-[#141413] shadow-sm' : 'text-[#737373]'" class="px-4 py-1.5 rounded text-sm font-medium transition-colors">Node.js</button>
+            </div>
+
+            <!-- ---- 代码示例块: 根据 guideLang 显示对应示例，右上角复制按钮 ---- -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] overflow-hidden mb-6">
+              <div class="flex items-center justify-between px-4 py-2.5 border-b border-[#f0f0ee]">
+                <span class="text-[11px] font-mono text-[#737373]" x-text="guideLang === 'curl' ? 'bash' : guideLang"></span>
+                <button @click="copyText(guideLang==='curl'?curlSample():guideLang==='python'?pySample():nodeSample())"
+                  class="text-[11px] font-medium text-accent-600 hover:text-accent-700 transition-colors flex items-center gap-1">
+                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                  复制
+                </button>
+              </div>
+              <pre class="p-4 text-xs leading-relaxed overflow-x-auto text-[#1c1c1a] bg-[#fafaf8]"><code x-html="guideLang==='curl'?curlSample():guideLang==='python'?pySample():nodeSample()"></code></pre>
+            </div>
+
+            <!-- ---- Claude Code 接入说明 ---- -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5 mb-4">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-accent-500"></span>Claude Code 接入
+              </h3>
+              <p class="text-xs text-[#737373] mb-3">设置以下环境变量，让 Claude Code 的请求经本网关转发（无需改代码）：</p>
+              <pre class="p-4 text-xs leading-relaxed overflow-x-auto text-[#1c1c1a] bg-[#fafaf8] rounded border border-[#f0f0ee]"><code>export ANTHROPIC_BASE_URL=http://你的网关地址:8000
+export ANTHROPIC_API_KEY=你的API_Key
+
+# 然后正常启动 Claude Code 即可
+claude</code></pre>
+            </div>
+
+            <!-- ---- Codex 接入说明 ---- -->
+            <div class="bg-white rounded-md border border-[#e5e5e3] p-5">
+              <h3 class="text-sm font-semibold text-[#141413] mb-3 flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-accent-500"></span>Codex 接入
+              </h3>
+              <p class="text-xs text-[#737373] mb-3">编辑 <span class="font-mono text-[#141413]">~/.codex/config.toml</span>，将 custom provider 指向本网关，并填入网关 Key：</p>
+              <pre class="p-4 text-xs leading-relaxed overflow-x-auto text-[#1c1c1a] bg-[#fafaf8] rounded border border-[#f0f0ee]"><code>[model_providers.custom]
+base_url = "http://127.0.0.1:8000/v1"
+requires_openai_auth = true
+experimental_bearer_token = "你的API_Key"</code></pre>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </template>
+
+  <!-- ==================================================================
+       Toast 通知 (全局)
+       固定在右下角，每种操作结果都会在此弹出提示
+       - success (绿色): 操作成功
+       - error (红色): 操作失败
+       点击可立即关闭，3 秒后自动消失
+       ================================================================== -->
+  <div class="fixed bottom-5 right-5 z-50 space-y-2" x-data>
+    <template x-for="(msg, i) in toasts" :key="i">
+      <div :class="msg.type === 'success' ? 'bg-emerald-600' : 'bg-[#dc2626]'"
+        class="toast text-white text-sm px-4 py-2.5 rounded-md shadow-lg flex items-center gap-2 cursor-pointer"
+        @click="msg._remove()">
+        <span x-show="msg.type === 'success'">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+        </span>
+        <span x-show="msg.type !== 'success'">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </span>
+        <span x-text="msg.text"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- ==================================================================
+       JavaScript: app() 组件数据和方法
+       所有页面逻辑集中在此，分为以下几个区域:
+       
+       1. 状态变量: token, role, currentTab, loading, 各类列表数据
+       2. 图标 SVG: 导航栏使用的 inline SVG 图标
+       3. 导航 tabs: userTabs (普通用户) + adminTabs (管理员)
+       4. 模型参考: modelProviders 列出所有国内可接的大模型
+       5. 数据加载: loadData() 从后端 API 拉取所有数据
+       6. CRUD 操作: 创建/删除 Key、用户管理、上游 Key、定价
+       ================================================================== -->
+  <script>
+    function app() {
+      return {
+
+        // ====== 1. 状态变量 ======
+        // token / role: 从 localStorage 读取，用于认证和权限判断
+        token: localStorage.getItem('token') || '',
+        role:  localStorage.getItem('role')  || '',
+
+        // currentTab: 控制当前显示哪个面板
+        // 可选值: dashboard / keys / transactions / usage / admin-users / admin-upstream / admin-pricing
+        currentTab: 'dashboard',
+
+        // loading: 数据加载中标志，显示骨架屏
+        loading: false,
+
+        // ---- 概览页数据 ----
+        userBalance: 0,       // 用户积分余额 (来自 /api/auth/me)
+        todayCost: 0,         // 今日消耗 (loadData 中从 transactions 计算)
+        allUsers: [],         // 所有用户列表 (仅 admin)
+
+        // ---- API Keys 数据 ----
+        userKeys: [],         // 用户的 API Key 列表
+        newKeyName: '',       // 创建 Key 表单的输入值
+        newKeyResult: '',     // 创建成功返回的完整 Key (仅显示一次)
+
+        // ---- 交易 & 使用记录数据 ----
+        transactions: [],     // 交易记录列表 (最近 50 条)
+        usageRecords: [],     // API 使用记录列表 (最近 50 条)
+
+        // ---- 上游 Key 数据 ----
+        upstreamKeys: [],     // 已配置的上游 Key 列表
+        upstreamForm: { model_name: '', api_key: '', account_name: '', priority: 0 },
+
+        // ---- 定价数据 ----
+        pricingList: [],      // 已配置的模型定价列表
+        pricingForm: { model_name: '', prompt: 0, completion: 0 },
+
+        // ---- 创建用户表单 ----
+        adminForm: { username: '', password: '', balance: 0 },
+
+        // ---- Toast 通知队列 ----
+        toasts: [],
+
+        // ---- 模型参考表搜索 ----
+        modelSearch: '',      // 搜索关键词，实时过滤模型参考表
+        guideLang: 'curl',     // 使用指南代码语言切换 (curl/python/node)
+
+        // ====== 2. 导航栏 SVG 图标 (统一大小 14x14) ======
+        iconDash: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7m-9 2v8m4-8v8"/></svg>',
+        iconKey: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/></svg>',
+        iconTx: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>',
+        iconUsage: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
+        iconUsers: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>',
+        iconUpstream: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>',
+        iconChart: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
+        iconGuide: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>',
+        iconPricing: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+
+        // ====== 3. 导航 tabs (getter 属性，动态生成) ======
+        // 普通用户 tabs: 概览 / API Keys / 交易记录 / 使用记录
+        get userTabs() {
+          return [
+            { id: 'dashboard',    label: '概览',     icon: this.iconDash },
+            { id: 'keys',         label: 'API Keys', icon: this.iconKey },
+            { id: 'transactions', label: '交易记录',  icon: this.iconTx },
+            { id: 'usage',        label: '使用记录',  icon: this.iconUsage },
+            { id: 'admin-dashboard-viz', label: '数据看板', icon: this.iconChart },
+            { id: 'guide',               label: '使用指南', icon: this.iconGuide },
+          ];
+        },
+
+        // 管理员 tabs: 仅 role==='admin' 时返回有内容的数组
+        get adminTabs() {
+          if (this.role !== 'admin') return [];
+          return [
+            { id: 'admin-users',    label: '用户管理', icon: this.iconUsers },
+            { id: 'admin-upstream', label: '上游 Key', icon: this.iconUpstream },
+            { id: 'admin-pricing',  label: '模型定价', icon: this.iconPricing },
+          ];
+        },
+
+        // ==================================================================
+        // 4. modelProviders: 国内大模型供应商参考列表
+        //
+        // 每个条目字段:
+        //   name     → 模型名称 (填入上游 Key / 模型定价的"模型名"字段)
+        //   provider → 供应商名称
+        //   hub      → 在浏览器打开此链接，注册并获取 API Key
+        //   base_url → OpenAI 兼容的 Base URL (配置 LiteLLM 时使用)
+        //   note     → 模型简介
+        //
+        // 添加新模型: 按相同格式在数组中追加一个对象即可，页面自动刷新
+        // ==================================================================
+        modelProviders: [
+          // ---- DeepSeek 深度求索 ----
+          { name: 'deepseek-chat',      provider: 'DeepSeek',      hub: 'https://platform.deepseek.com/api_keys',      base_url: 'https://api.deepseek.com/v1',           note: 'DeepSeek-V3 通用对话模型' },
+          { name: 'deepseek-reasoner',  provider: 'DeepSeek',      hub: 'https://platform.deepseek.com/api_keys',      base_url: 'https://api.deepseek.com/v1',           note: 'DeepSeek-R1 深度推理模型' },
+
+          // ---- 阿里云通义千问 (Qwen) ----
+          { name: 'qwen-turbo',         provider: '阿里通义千问',    hub: 'https://dashscope.console.aliyun.com/apiKey', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', note: 'Qwen Turbo 极速响应' },
+          { name: 'qwen-plus',          provider: '阿里通义千问',    hub: 'https://dashscope.console.aliyun.com/apiKey', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', note: 'Qwen Plus 均衡性能' },
+          { name: 'qwen-max',           provider: '阿里通义千问',    hub: 'https://dashscope.console.aliyun.com/apiKey', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', note: 'Qwen Max 旗舰能力' },
+          { name: 'qwen2.5-72b',        provider: '阿里通义千问',    hub: 'https://dashscope.console.aliyun.com/apiKey', base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', note: 'Qwen2.5-72B 开源部署版' },
+
+          // ---- 智谱 AI (GLM 系列) ----
+          { name: 'glm-4-flash',        provider: '智谱AI',         hub: 'https://open.bigmodel.cn/usercenter/apikeys',base_url: 'https://open.bigmodel.cn/api/paas/v4',  note: 'GLM-4 Flash 免费快速' },
+          { name: 'glm-4-plus',         provider: '智谱AI',         hub: 'https://open.bigmodel.cn/usercenter/apikeys',base_url: 'https://open.bigmodel.cn/api/paas/v4',  note: 'GLM-4 Plus 旗舰模型' },
+          { name: 'glm-4-air',          provider: '智谱AI',         hub: 'https://open.bigmodel.cn/usercenter/apikeys',base_url: 'https://open.bigmodel.cn/api/paas/v4',  note: 'GLM-4 Air 高性价比' },
+
+          // ---- 月之暗面 (Kimi) ----
+          { name: 'moonshot-v1-8k',     provider: '月之暗面 Kimi',   hub: 'https://platform.moonshot.cn/console/api-keys',base_url: 'https://api.moonshot.cn/v1',            note: 'Kimi 8K 上下文' },
+          { name: 'moonshot-v1-32k',    provider: '月之暗面 Kimi',   hub: 'https://platform.moonshot.cn/console/api-keys',base_url: 'https://api.moonshot.cn/v1',            note: 'Kimi 32K 上下文' },
+          { name: 'moonshot-v1-128k',   provider: '月之暗面 Kimi',   hub: 'https://platform.moonshot.cn/console/api-keys',base_url: 'https://api.moonshot.cn/v1',            note: 'Kimi 128K 长文本' },
+
+          // ---- 百川智能 ----
+          { name: 'Baichuan4',          provider: '百川智能',        hub: 'https://platform.baichuan-ai.com/console/apikey',base_url: 'https://api.baichuan-ai.com/v1',       note: '百川4 旗舰对话' },
+          { name: 'Baichuan3-Turbo',    provider: '百川智能',        hub: 'https://platform.baichuan-ai.com/console/apikey',base_url: 'https://api.baichuan-ai.com/v1',       note: '百川3 Turbo 快速版' },
+
+          // ---- 零一万物 (Yi) ----
+          { name: 'yi-lightning',       provider: '零一万物',        hub: 'https://platform.lingyiwanwu.com/apikey',     base_url: 'https://api.lingyiwanwu.com/v1',        note: 'Yi Lightning 极速响应' },
+          { name: 'yi-large',           provider: '零一万物',        hub: 'https://platform.lingyiwanwu.com/apikey',     base_url: 'https://api.lingyiwanwu.com/v1',        note: 'Yi Large 旗舰模型' },
+
+          // ---- MiniMax ----
+          { name: 'abab6.5s-chat',      provider: 'MiniMax',        hub: 'https://platform.minimax.chat/user-center/basic-information/interface-key', base_url: 'https://api.minimax.chat/v1', note: 'MiniMax 快速对话' },
+
+          // ---- 阶跃星辰 (StepFun) ----
+          { name: 'step-1-flash',       provider: '阶跃星辰',        hub: 'https://platform.stepfun.com/interface-key',  base_url: 'https://api.stepfun.com/v1',            note: 'Step-1 Flash 极速版' },
+          { name: 'step-2',             provider: '阶跃星辰',        hub: 'https://platform.stepfun.com/interface-key',  base_url: 'https://api.stepfun.com/v1',            note: 'Step-2 旗舰模型' },
+
+          // ---- 腾讯混元 ----
+          { name: 'hunyuan-lite',       provider: '腾讯混元',        hub: 'https://console.cloud.tencent.com/hunyuan/start',base_url: 'https://api.hunyuan.cloud.tencent.com/v1', note: '混元 Lite 免费额度' },
+          { name: 'hunyuan-pro',        provider: '腾讯混元',        hub: 'https://console.cloud.tencent.com/hunyuan/start',base_url: 'https://api.hunyuan.cloud.tencent.com/v1', note: '混元 Pro 增强版' },
+
+          // ---- 字节豆包 (火山引擎) ----
+          { name: 'doubao-pro-32k',     provider: '字节豆包',        hub: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey', base_url: 'https://ark.cn-beijing.volces.com/api/v3', note: '豆包 Pro 32K 对话' },
+          { name: 'doubao-lite-32k',    provider: '字节豆包',        hub: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey', base_url: 'https://ark.cn-beijing.volces.com/api/v3', note: '豆包 Lite 32K 轻量' },
+        ],
+
+        // ====== 4.5 时间格式化 ======
+        // 将后端返回的 RFC 3339 时间戳 (如 2026-07-20T10:30:00+08:00) 转换为可读格式
+        // 今天 → "今天 HH:mm"，昨天 → "昨天 HH:mm"，更早 → "YYYY-MM-DD HH:mm"
+        formatTime(raw) {
+          if (!raw) return '—';
+          try {
+            const d = new Date(raw);
+            if (isNaN(d.getTime())) return raw;
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today - 86400000);
+            const dateDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const time = d.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            if (dateDay.getTime() === today.getTime()) return '今天 ' + time;
+            if (dateDay.getTime() === yesterday.getTime()) return '昨天 ' + time;
+            const y = d.getFullYear();
+            const mo = String(d.getMonth() + 1).padStart(2, '0');
+            const dy = String(d.getDate()).padStart(2, '0');
+            return y + '-' + mo + '-' + dy + ' ' + time;
+          } catch (e) { return raw; }
+        },
+
+        // ---- 数据看板状态 ----
+        statsData: { today: {}, week: {} },   // /api/admin/stats 返回的聚合数据
+        chartInstances: [],                    // Chart.js 实例引用 (用于销毁重建)
+
+        // 模型分布的总消耗 (供进度条计算百分比)
+        get modelDistTotal() {
+          const models = this.computeModelDistribution();
+          return models.reduce((s, m) => s + m.cost, 0);
+        },
+
+        // ====== 4.6 加载统计数据并渲染图表 ======
+        // admin: 调用 /api/admin/stats 获取系统全局统计
+        // 普通用户: 从 usageRecords 本地聚合个人数据
+        async loadStatsAndRender() {
+          await this.loadData();
+          if (this.role === 'admin') {
+            try {
+              const res = await fetch('/api/admin/stats', {
+                headers: { 'Authorization': 'Bearer ' + this.token }
+              });
+              this.statsData = await res.json();
+            } catch (e) { console.error(e); }
+          } else {
+            // 普通用户：从自己的使用记录聚合
+            const usage = this.usageRecords || [];
+            const now = new Date();
+            const todayStr = now.toISOString().slice(0, 10);
+            const weekStart = new Date(now);
+            weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); // 本周一
+            weekStart.setHours(0, 0, 0, 0);
+            const todayCount = { requests: 0, tokens: 0, cost: 0 };
+            const weekCount = { requests: 0, tokens: 0, cost: 0 };
+            usage.forEach(r => {
+              const day = (r.created_at || '').slice(0, 10);
+              const d = new Date(r.created_at);
+              if (!isNaN(d.getTime())) {
+                if (day === todayStr) {
+                  todayCount.requests++;
+                  todayCount.tokens += r.total_tokens || 0;
+                  todayCount.cost += r.cost || 0;
+                }
+                if (d >= weekStart) {
+                  weekCount.requests++;
+                  weekCount.tokens += r.total_tokens || 0;
+                  weekCount.cost += r.cost || 0;
+                }
+              }
+            });
+            this.statsData = {
+              today: { total_requests: todayCount.requests, total_tokens: todayCount.tokens, total_cost: todayCount.cost },
+              week:  { total_requests: weekCount.requests,  total_tokens: weekCount.tokens,  total_cost: weekCount.cost },
+              active_keys: (this.userKeys || []).filter(k => k.is_active).length,
+              total_users: 0,  // 普通用户看不到
+            };
+          }
+          this.$nextTick(() => this.renderCharts());
+        },
+
+        // 销毁所有旧 Chart.js 实例 (避免内存泄漏和 canvas 冲突)
+        destroyCharts() {
+          this.chartInstances.forEach(c => c.destroy());
+          this.chartInstances = [];
+        },
+
+        // 从 usageRecords 按天聚合: labels(MM-DD) / tokens / cost / requests
+        computeDailyTrend() {
+          const usage = this.usageRecords || [];
+          const daily = {};
+          usage.forEach(r => {
+            const day = (r.created_at || '').slice(0, 10);
+            if (!day) return;
+            if (!daily[day]) daily[day] = { tokens: 0, cost: 0, requests: 0 };
+            daily[day].tokens += r.total_tokens || 0;
+            daily[day].cost += r.cost || 0;
+            daily[day].requests += 1;
+          });
+          const sorted = Object.keys(daily).sort();
+          return {
+            labels: sorted.map(d => d.slice(5)),
+            tokens: sorted.map(d => daily[d].tokens),
+            cost: sorted.map(d => daily[d].cost),
+            requests: sorted.map(d => daily[d].requests),
+          };
+        },
+
+        // 从 usageRecords 按模型聚合: 调用次数 / prompt/completion/total tokens / 消耗
+        // 返回按消耗降序排列的数组
+        computeModelDistribution() {
+          const usage = this.usageRecords || [];
+          const models = {};
+          usage.forEach(r => {
+            const m = r.model_name || 'unknown';
+            if (!models[m]) models[m] = { tokens: 0, cost: 0, requests: 0, prompt_tokens: 0, completion_tokens: 0 };
+            models[m].tokens += r.total_tokens || 0;
+            models[m].cost += r.cost || 0;
+            models[m].requests += 1;
+            models[m].prompt_tokens += r.prompt_tokens || 0;
+            models[m].completion_tokens += r.completion_tokens || 0;
+          });
+          return Object.entries(models)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.cost - a.cost);
+        },
+
+        // Chart.js 渲染主函数: 折线图 (每日趋势) + 甜甜圈图 (模型分布)
+        renderCharts() {
+          this.destroyCharts();
+
+          // ---- 折线图: 每日 Token 消耗趋势 ----
+          const daily = this.computeDailyTrend();
+          const lineCtx = document.getElementById('chart-daily-trend');
+          if (lineCtx && daily.labels.length > 0) {
+            this.chartInstances.push(new Chart(lineCtx, {
+              type: 'line',
+              data: {
+                labels: daily.labels,
+                datasets: [
+                  {
+                    label: 'Tokens',
+                    data: daily.tokens,
+                    borderColor: '#0d9488',
+                    backgroundColor: 'rgba(13,148,136,0.08)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 2,
+                    pointBackgroundColor: '#0d9488',
+                  },
+                  {
+                    label: '积分',
+                    data: daily.cost.map(c => Math.round(c * 100) / 100),
+                    borderColor: '#d97706',
+                    backgroundColor: 'transparent',
+                    tension: 0.4,
+                    pointRadius: 2,
+                    pointBackgroundColor: '#d97706',
+                    yAxisID: 'y1',
+                  }
+                ],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: {
+                  legend: { display: true, position: 'bottom', labels: { boxWidth: 10, padding: 20, font: { size: 10 } } },
+                  tooltip: { bodyFont: { size: 11 } }
+                },
+                scales: {
+                  x: { grid: { display: false } },
+                  y: { beginAtZero: true, title: { display: true, text: 'Tokens', font: { size: 10 } }, ticks: { font: { size: 10 } } },
+                  y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: '积分', font: { size: 10 } }, ticks: { font: { size: 10 } } },
+                }
+              }
+            }));
+          }
+
+          // ---- 甜甜圈图: 模型消耗分布 ----
+          const models = this.computeModelDistribution();
+          const donutCtx = document.getElementById('chart-model-dist');
+          if (donutCtx && models.length > 0) {
+            const colors = ['#0d9488', '#d97706', '#7c3aed', '#059669', '#2563eb', '#dc2626', '#c026d3', '#0891b2', '#4f46e5', '#ea580c'];
+            const top8 = models.slice(0, 8);
+            const otherCost = models.slice(8).reduce((s, m) => s + m.cost, 0);
+            const data = top8.map(m => m.cost);
+            const labels = top8.map(m => m.name);
+            if (otherCost > 0) { data.push(otherCost); labels.push('其他'); }
+            this.chartInstances.push(new Chart(donutCtx, {
+              type: 'doughnut',
+              data: {
+                labels,
+                datasets: [{
+                  data,
+                  backgroundColor: colors.slice(0, data.length),
+                  borderWidth: 0,
+                }],
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { position: 'bottom', labels: { boxWidth: 8, padding: 12, font: { size: 10 } } },
+                  tooltip: { bodyFont: { size: 11 }, callbacks: { label: ctx => ' ' + ctx.label + ': ' + ctx.raw.toFixed(2) + ' 积分' } }
+                },
+              }
+            }));
+          }
+        },
+
+        // ====== 5. Toast 通知 ======
+        // type: 'success' | 'error'
+        // 3 秒后自动移除
+        toast(type, text) {
+          const obj = { type, text, _remove: () => { this.toasts = this.toasts.filter(t => t !== obj); } };
+          this.toasts.push(obj);
+          setTimeout(() => obj._remove(), 3000);
+        },
+
+        // ====== 6. 初始化 ======
+        // Alpine 组件挂载时自动调用，加载所有数据
+        init() { if (!this.token) return; this.loadData(); },
+
+        // ====== 7. 数据加载 ======
+        // 并行请求所有 API，填充页面数据
+        // 请求路径映射:
+        //   /api/auth/me      → userBalance
+        //   /api/keys         → userKeys
+        //   /api/transactions → transactions (取最近 50 条)
+        //   /api/usage        → usageRecords (取最近 50 条)
+        //   /api/admin/users        → allUsers (仅 admin)
+        //   /api/admin/upstream-keys → upstreamKeys (仅 admin)
+        //   /api/admin/pricing      → pricingList (仅 admin)
+        async loadData() {
+          this.loading = true;
+          const headers = { 'Authorization': 'Bearer ' + this.token };
+          try {
+            const me = await (await fetch('/api/auth/me', { headers })).json();
+            this.userBalance = me.balance;
+
+            const kr = await (await fetch('/api/keys', { headers })).json();
+            this.userKeys = kr.keys || [];
+
+            const tr = await (await fetch('/api/transactions', { headers })).json();
+            this.transactions = (tr.transactions || []).slice(0, 50);
+
+            const ur = await (await fetch('/api/usage', { headers })).json();
+            this.usageRecords = (ur.usage || []).slice(0, 50);
+
+            // 今日消耗 = 今天所有 deduct 类型交易的金额绝对值之和
+            const today = new Date().toISOString().slice(0, 10);
+            this.todayCost = this.transactions
+              .filter(t => t.type === 'deduct' && t.created_at && t.created_at.startsWith(today))
+              .reduce((s, t) => s + Math.abs(t.amount), 0);
+
+            // 管理员额外加载用户/上游Key/定价数据
+            if (this.role === 'admin') {
+              const us = await (await fetch('/api/admin/users', { headers })).json();
+              this.allUsers = us.users || [];
+              const uk = await (await fetch('/api/admin/upstream-keys', { headers })).json();
+              this.upstreamKeys = uk.keys || [];
+              const pr = await (await fetch('/api/admin/pricing', { headers })).json();
+              this.pricingList = pr.pricing || [];
+            }
+          } catch (e) { console.error(e); }
+          finally { this.loading = false; }
+        },
+
+        // 刷新概览数据 (切换回仪表盘时调用)
+        async refreshStats() { this.loadData(); },
+
+        // 使用指南的代码示例生成（用于一键复制）
+        curlSample() {
+          return `curl ${window.location.origin}/v1/chat/completions \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -d '{
+    "model": "deepseek-chat",
+    "messages": [{"role": "user", "content": "你好"}]
+  }'`;
+        },
+        pySample() {
+          return `from openai import OpenAI
+
+client = OpenAI(
+    api_key="YOUR_API_KEY",
+    base_url="${window.location.origin}/v1"
+)
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[{"role": "user", "content": "你好"}]
+)
+print(response.choices[0].message.content)`;
+        },
+        nodeSample() {
+          return `import OpenAI from 'openai';
+
+const client = new OpenAI({
+  apiKey: 'YOUR_API_KEY',
+  baseURL: '${window.location.origin}/v1',
+});
+
+const response = await client.chat.completions.create({
+  model: 'deepseek-chat',
+  messages: [{ role: 'user', content: '你好' }],
+});
+console.log(response.choices[0].message.content);`;
+        },
+
+                // 剪贴板复制 (用于复制 API Key)
+        copyText(text) { navigator.clipboard.writeText(text); this.toast('success', '已复制到剪贴板'); },
+
+        // ====== 8. CRUD: API Keys ======
+        // 创建 Key: POST /api/keys { key_name }
+        async createKey() {
+          if (!this.newKeyName) return;
+          const res = await fetch('/api/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify({ key_name: this.newKeyName })
+          });
+          const data = await res.json();
+          if (res.ok) { this.newKeyResult = data.api_key; this.newKeyName = ''; this.loadData(); }
+          else { this.toast('error', data.detail || '创建失败'); }
+        },
+
+        // 切换 Key 启用/禁用状态: PATCH /api/keys/:id/toggle
+        async toggleKey(id) {
+          await fetch('/api/keys/' + id + '/toggle', { method: 'PATCH', headers: { 'Authorization': 'Bearer ' + this.token } });
+          this.loadData();
+        },
+
+        // 删除 Key: DELETE /api/keys/:id (有确认弹窗)
+        async deleteKey(id) {
+          if (!confirm('确定删除此 Key？')) return;
+          await fetch('/api/keys/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+          this.loadData();
+        },
+
+        // ====== 9. CRUD: 用户管理 (Admin Only) ======
+        // 创建用户: POST /api/admin/users { username, password, balance }
+        async createUser() {
+          const res = await fetch('/api/admin/users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify(this.adminForm)
+          });
+          if (res.ok) { this.adminForm = { username: '', password: '', balance: 0 }; this.loadData(); this.toast('success', '用户创建成功'); }
+          else { const d = await res.json(); this.toast('error', d.detail || '创建失败'); }
+        },
+
+        // 充值: POST /api/admin/users/:id/recharge { amount } (弹窗输入金额)
+        async rechargeUser(id) {
+          const amount = prompt('充值积分：');
+          if (!amount || isNaN(amount)) return;
+          await fetch('/api/admin/users/' + id + '/recharge', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify({ amount: parseFloat(amount) })
+          });
+          this.loadData();
+          this.toast('success', '充值成功');
+        },
+
+        // 扣减: POST /api/admin/users/:id/deduct { amount } (弹窗输入金额)
+        async deductUser(id) {
+          const amount = prompt('扣减积分：');
+          if (!amount || isNaN(amount)) return;
+          await fetch('/api/admin/users/' + id + '/deduct', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify({ amount: parseFloat(amount) })
+          });
+          this.loadData();
+          this.toast('success', '扣减成功');
+        },
+
+        // ====== 10. CRUD: 上游 Key (Admin Only) ======
+        // 添加上游 Key: POST /api/admin/upstream-keys { model_name, api_key, account_name, priority }
+        async addUpstreamKey() {
+          const res = await fetch('/api/admin/upstream-keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify(this.upstreamForm)
+          });
+          if (res.ok) { this.upstreamForm = { model_name: '', api_key: '', account_name: '', priority: 0 }; this.loadData(); this.toast('success', '上游 Key 已添加'); }
+          else { const d = await res.json(); this.toast('error', d.detail || '添加失败'); }
+        },
+
+        // 删除上游 Key: DELETE /api/admin/upstream-keys/:id
+        async deleteUpstreamKey(id) {
+          if (!confirm('确定删除？')) return;
+          await fetch('/api/admin/upstream-keys/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+          this.loadData();
+          this.toast('success', '已删除');
+        },
+
+        // ====== 11. CRUD: 模型定价 (Admin Only) ======
+        // 设置定价: POST /api/admin/pricing { model_name, prompt_price_per_1k, completion_price_per_1k }
+        async setPricing() {
+          await fetch('/api/admin/pricing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.token },
+            body: JSON.stringify({
+              model_name: this.pricingForm.model_name,
+              prompt_price_per_1k: parseFloat(this.pricingForm.prompt),
+              completion_price_per_1k: parseFloat(this.pricingForm.completion)
+            })
+          });
+          this.pricingForm = { model_name: '', prompt: 0, completion: 0 };
+          this.loadData();
+          this.toast('success', '定价已保存');
+        },
+
+        // ====== 12. 退出登录 ======
+        // 清除 localStorage 中的 token 和 role，跳转到首页 (触发未登录状态)
+        logout() {
+          localStorage.removeItem('token');
+          localStorage.removeItem('role');
+          window.location.href = '/';
+        }
+      };
+    }
+  </script>
+</body>
+</html>

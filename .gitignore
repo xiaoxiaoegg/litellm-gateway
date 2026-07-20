@@ -1,0 +1,27 @@
+# ===== 密钥与凭据（绝不可提交） =====
+.env
+.env.*
+!.env.example
+
+# 数据库备份（含用户、API Key 哈希、余额等敏感数据）
+backup/
+
+# TLS 私钥与证书（本地自签，协作者各自生成）
+nginx/ssl/
+
+# ===== 本地 / 系统垃圾 =====
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# ===== 构建产物 =====
+gateway
+gateway-go/gateway
+bin/
+*.db
+*.sqlite
+*.sqlite3
+
+# ===== Go 本地缓存 =====
+gateway-go/vendor/

@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="'Segoe UI', Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f0f4f8"/><stop offset="100%" stop-color="#e2e8f0"/></linearGradient>
+    <linearGradient id="go" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#00ADD8"/><stop offset="100%" stop-color="#0089B8"/></linearGradient>
+    <linearGradient id="litellm" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7C3AED"/><stop offset="100%" stop-color="#6D28D9"/></linearGradient>
+    <linearGradient id="green" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#10B981"/><stop offset="100%" stop-color="#059669"/></linearGradient>
+    <linearGradient id="blue" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#3B82F6"/><stop offset="100%" stop-color="#2563EB"/></linearGradient>
+    <linearGradient id="orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F59E0B"/><stop offset="100%" stop-color="#D97706"/></linearGradient>
+    <linearGradient id="red" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#EF4444"/><stop offset="100%" stop-color="#DC2626"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15"/></filter>
+    <filter id="shadow-sm"><feDropShadow dx="0" dy="1" stdDeviation="2" flood-opacity="0.1"/></filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/></marker>
+    <marker id="arrow-success" viewBox="0 0 10 10" refX="20" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 Z" fill="#10B981"/></marker>
+  </defs>
+
+  <rect width="1200" height="900" fill="url(#bg)" rx="8"/>
+
+  <!-- Title -->
+  <text x="600" y="38" text-anchor="middle" font-size="22" font-weight="bold" fill="#1e293b">Token 中转站 — 系统架构</text>
+  <text x="600" y="58" text-anchor="middle" font-size="13" fill="#64748b">基于 LiteLLM · Go 全栈 · AI 编码工具兼容网关</text>
+
+  <!-- ===== LAYER 1: USER ACCESS ===== -->
+  <rect x="30" y="75" width="1140" height="90" rx="8" fill="#fff" filter="url(#shadow-sm)" opacity="0.9"/>
+  <text x="45" y="95" font-size="12" font-weight="bold" fill="#64748b">用户入口</text>
+
+  <!-- Web UI -->
+  <rect x="50" y="105" width="180" height="45" rx="6" fill="url(#blue)" filter="url(#shadow-sm)"/>
+  <text x="140" y="125" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">🌐 Web 管理界面</text>
+  <text x="140" y="141" text-anchor="middle" font-size="10" fill="#bfdbfe">Alpine.js + Tailwind</text>
+
+  <!-- API Client -->
+  <rect x="280" y="105" width="180" height="45" rx="6" fill="url(#blue)" filter="url(#shadow-sm)"/>
+  <text x="370" y="125" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">🔌 API 客户端</text>
+  <text x="370" y="141" text-anchor="middle" font-size="10" fill="#bfdbfe">curl / Postman / SDK</text>
+
+  <!-- Claude Code / Codex -->
+  <rect x="510" y="105" width="200" height="45" rx="6" fill="url(#orange)" filter="url(#shadow-sm)"/>
+  <text x="610" y="122" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">🤖 Claude Code / Codex</text>
+  <text x="610" y="140" text-anchor="middle" font-size="10" fill="#fde68a">SSE 流式 · 工具调用</text>
+
+  <!-- Arrow to Gateway -->
+  <line x1="230" y1="127" x2="278" y2="127" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="460" y1="127" x2="508" y2="127" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="710" y1="127" x2="780" y2="127" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===== LAYER 2: GATEWAY-GO ===== -->
+  <rect x="790" y="80" width="370" height="80" rx="8" fill="url(#go)" filter="url(#shadow)"/>
+  <text x="975" y="105" text-anchor="middle" font-size="15" fill="#fff" font-weight="bold">🔑 gateway-go (Go/Gin)</text>
+  <text x="975" y="123" text-anchor="middle" font-size="11" fill="#99f6e4">:8000 · JWT 鉴权 · API Key 管理 · 计费 · 配额 · 路由</text>
+  <text x="975" y="140" text-anchor="middle" font-size="11" fill="#99f6e4">PostgreSQL · GORM · 上游切换 · SSE 流式 · 模型映射</text>
+
+  <!-- ===== LAYER 3: CORE FEATURES ===== -->
+  <rect x="30" y="180" width="1140" height="220" rx="8" fill="#fff" filter="url(#shadow-sm)"/>
+  <text x="45" y="200" font-size="12" font-weight="bold" fill="#64748b">核心功能模块</text>
+
+  <!-- Row 1: 4 features -->
+  <!-- Feature 1: Auth -->
+  <rect x="50" y="215" width="250" height="82" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="50" y="215" width="250" height="28" rx="6" fill="#e0f2fe"/>
+  <text x="175" y="233" text-anchor="middle" font-size="11" font-weight="bold" fill="#0369a1">🔐 认证 &amp; 用户管理</text>
+  <text x="60" y="253" font-size="10" fill="#475569">• JWT 注册/登录</text>
+  <text x="60" y="268" font-size="10" fill="#475569">• 管理员创建/充值/扣减</text>
+  <text x="60" y="283" font-size="10" fill="#475569">• API Key 生成/删除/启停</text>
+
+  <!-- Feature 2: Billing -->
+  <rect x="320" y="215" width="250" height="82" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="320" y="215" width="250" height="28" rx="6" fill="#dcfce7"/>
+  <text x="445" y="233" text-anchor="middle" font-size="11" font-weight="bold" fill="#15803d">💰 计费 &amp; 配额</text>
+  <text x="330" y="253" font-size="10" fill="#475569">• 积分制 · 原子扣费</text>
+  <text x="330" y="268" font-size="10" fill="#475569">• 按 token 消耗自动计费</text>
+  <text x="330" y="283" font-size="10" fill="#475569">• 每日配额限制 · 429 拦截</text>
+
+  <!-- Feature 3: Upstream -->
+  <rect x="590" y="215" width="250" height="82" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="590" y="215" width="250" height="28" rx="6" fill="#fef3c7"/>
+  <text x="715" y="233" text-anchor="middle" font-size="11" font-weight="bold" fill="#92400e">🔄 上游 Key 管理</text>
+  <text x="600" y="253" font-size="10" fill="#475569">• 多 Key 池 · 优先级排序</text>
+  <text x="600" y="268" font-size="10" fill="#475569">• 自动故障切换</text>
+  <text x="600" y="283" font-size="10" fill="#475569">• 配额检测 · 自动禁用</text>
+
+  <!-- Feature 4: Model Map -->
+  <rect x="860" y="215" width="290" height="82" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="860" y="215" width="290" height="28" rx="6" fill="#ede9fe"/>
+  <text x="1005" y="233" text-anchor="middle" font-size="11" font-weight="bold" fill="#6d28d9">🧠 模型路由 &amp; 兼容</text>
+  <text x="870" y="253" font-size="10" fill="#475569">• Claude/GPT → 国产模型映射</text>
+  <text x="870" y="268" font-size="10" fill="#475569">• SSE 流式 · 工具调用透传</text>
+  <text x="870" y="283" font-size="10" fill="#475569">• /v1/models · 模型发现</text>
+
+  <!-- Row 2: 3 features -->
+  <!-- Feature 5: Web UI -->
+  <rect x="50" y="310" width="350" height="75" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="50" y="310" width="350" height="28" rx="6" fill="#fce7f3"/>
+  <text x="225" y="328" text-anchor="middle" font-size="11" font-weight="bold" fill="#9d174d">📊 管理面板</text>
+  <text x="60" y="348" font-size="10" fill="#475569">• 用户管理 · Key 管理 · 交易记录 · 使用统计</text>
+  <text x="60" y="363" font-size="10" fill="#475569">• 上游 Key 配置 · 模型定价 · 充值扣减</text>
+
+  <!-- Feature 6: Monitoring -->
+  <rect x="420" y="310" width="350" height="75" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="420" y="310" width="350" height="28" rx="6" fill="#e0e7ff"/>
+  <text x="595" y="328" text-anchor="middle" font-size="11" font-weight="bold" fill="#3730a3">📈 监控</text>
+  <text x="430" y="348" font-size="10" fill="#475569">• Prometheus 指标采集</text>
+  <text x="430" y="363" font-size="10" fill="#475569">• Grafana 面板（请求量/延迟/Token/错误率）</text>
+
+  <!-- Feature 7: Backup -->
+  <rect x="790" y="310" width="360" height="75" rx="6" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
+  <rect x="790" y="310" width="360" height="28" rx="6" fill="#fef2f2"/>
+  <text x="970" y="328" text-anchor="middle" font-size="11" font-weight="bold" fill="#991b1b">🗄️ 数据持久化</text>
+  <text x="800" y="348" font-size="10" fill="#475569">• PostgreSQL 16 · 8 张表</text>
+  <text x="800" y="363" font-size="10" fill="#475569">• 每日自动备份 · 7 天保留</text>
+
+  <!-- Arrow from gateway-go to features -->
+  <line x1="975" y1="160" x2="975" y2="178" stroke="#64748b" stroke-width="1.5"/>
+  <line x1="175" y1="178" x2="175" y2="213" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="445" y1="178" x2="445" y2="213" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="715" y1="178" x2="715" y2="213" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <line x1="1005" y1="178" x2="1005" y2="213" stroke="#64748b" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+  <!-- ===== LAYER 4: INFRASTRUCTURE ===== -->
+  <rect x="30" y="415" width="1140" height="200" rx="8" fill="#fff" filter="url(#shadow-sm)"/>
+  <text x="45" y="435" font-size="12" font-weight="bold" fill="#64748b">部署基础设施 (Docker Compose · 8 个容器)</text>
+
+  <!-- 8 Container boxes in a grid -->
+  <rect x="50" y="450" width="255" height="70" rx="6" fill="url(#go)" filter="url(#shadow)"/>
+  <text x="177" y="475" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">gateway-go</text>
+  <text x="177" y="493" text-anchor="middle" font-size="10" fill="#99f6e4">:8000 ● Go 全栈</text>
+  <text x="177" y="508" text-anchor="middle" font-size="10" fill="#99f6e4">管理 API + Web UI</text>
+
+  <rect x="320" y="450" width="255" height="70" rx="6" fill="url(#litellm)" filter="url(#shadow)"/>
+  <text x="447" y="475" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">LiteLLM</text>
+  <text x="447" y="493" text-anchor="middle" font-size="10" fill="#c4b5fd">:4000 ● 模型路由</text>
+  <text x="447" y="508" text-anchor="middle" font-size="10" fill="#c4b5fd">100+ 模型接入</text>
+
+  <rect x="590" y="450" width="255" height="70" rx="6" fill="url(#blue)" filter="url(#shadow)"/>
+  <text x="717" y="475" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">Nginx</text>
+  <text x="717" y="493" text-anchor="middle" font-size="10" fill="#bfdbfe">:80/:443 ● 反向代理</text>
+  <text x="717" y="508" text-anchor="middle" font-size="10" fill="#bfdbfe">SSL 终结</text>
+
+  <rect x="860" y="450" width="290" height="70" rx="6" fill="url(#green)" filter="url(#shadow)"/>
+  <text x="1005" y="475" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">PostgreSQL</text>
+  <text x="1005" y="493" text-anchor="middle" font-size="10" fill="#a7f3d0">:5432 ● 数据持久化</text>
+  <text x="1005" y="508" text-anchor="middle" font-size="10" fill="#a7f3d0">8 张表</text>
+
+  <rect x="50" y="535" width="255" height="65" rx="6" fill="url(#orange)" filter="url(#shadow)"/>
+  <text x="177" y="558" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">📊 Grafana</text>
+  <text x="177" y="576" text-anchor="middle" font-size="10" fill="#fde68a">:3000 ● 可视化</text>
+  <text x="177" y="591" text-anchor="middle" font-size="10" fill="#fde68a">admin/admin123</text>
+
+  <rect x="320" y="535" width="255" height="65" rx="6" fill="url(#red)" filter="url(#shadow)"/>
+  <text x="447" y="558" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">📈 Prometheus</text>
+  <text x="447" y="576" text-anchor="middle" font-size="10" fill="#fecaca">:9090 ● 指标采集</text>
+  <text x="447" y="591" text-anchor="middle" font-size="10" fill="#fecaca">15s 轮询</text>
+
+  <rect x="590" y="535" width="255" height="65" rx="6" fill="#6366f1" filter="url(#shadow)"/>
+  <text x="717" y="558" text-anchor="middle" font-size="13" fill="#fff" font-weight="bold">🔄 Backup</text>
+  <text x="717" y="576" text-anchor="middle" font-size="10" fill="#c7d2fe">每日自动备份</text>
+  <text x="717" y="591" text-anchor="middle" font-size="10" fill="#c7d2fe">7 天保留</text>
+
+  <!-- ===== LAYER 5: PROVIDERS ===== -->
+  <rect x="30" y="630" width="1140" height="100" rx="8" fill="#fff" filter="url(#shadow-sm)"/>
+  <text x="45" y="650" font-size="12" font-weight="bold" fill="#64748b">AI 模型提供商</text>
+
+  <rect x="50" y="665" width="200" height="50" rx="6" fill="#d4edda" stroke="#28a745" stroke-width="1.5"/>
+  <text x="150" y="688" text-anchor="middle" font-size="14" fill="#155724" font-weight="bold">智谱 GLM-4</text>
+  <text x="150" y="704" text-anchor="middle" font-size="10" fill="#155724">✅ 已接入</text>
+
+  <rect x="270" y="665" width="200" height="50" rx="6" fill="#d4edda" stroke="#28a745" stroke-width="1.5"/>
+  <text x="370" y="688" text-anchor="middle" font-size="14" fill="#155724" font-weight="bold">DeepSeek</text>
+  <text x="370" y="704" text-anchor="middle" font-size="10" fill="#155724">✅ 已接入</text>
+
+  <rect x="490" y="665" width="200" height="50" rx="6" fill="#fff3cd" stroke="#ffc107" stroke-width="1.5"/>
+  <text x="590" y="688" text-anchor="middle" font-size="14" fill="#856404" font-weight="bold">Moonshot/Kimi</text>
+  <text x="590" y="704" text-anchor="middle" font-size="10" fill="#856404">⚠️ Key 过期</text>
+
+  <rect x="710" y="665" width="200" height="50" rx="6" fill="#f8d7da" stroke="#dc3545" stroke-width="1.5"/>
+  <text x="810" y="688" text-anchor="middle" font-size="14" fill="#721c24" font-weight="bold">百度千帆</text>
+  <text x="810" y="704" text-anchor="middle" font-size="10" fill="#721c24">❌ OAuth 待接入</text>
+
+  <rect x="930" y="665" width="220" height="50" rx="6" fill="#e2e8f0" stroke="#94a3b8" stroke-width="1.5"/>
+  <text x="1040" y="685" text-anchor="middle" font-size="14" fill="#475569" font-weight="bold">通义千问等</text>
+  <text x="1040" y="704" text-anchor="middle" font-size="10" fill="#64748b">100+ 模型可扩展</text>
+
+  <!-- ===== REQUEST FLOW ARROWS ===== -->
+  <!-- gateway-go → LiteLLM -->
+  <path d="M 975 520 L 975 540 L 447 540 L 447 522" fill="none" stroke="#7C3AED" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+  <text x="700" y="535" font-size="9" fill="#7C3AED" text-anchor="middle">转发请求</text>
+
+  <!-- LiteLLM → Provider -->
+  <path d="M 447 450 L 447 440 L 150 440 L 150 663" fill="none" stroke="#10B981" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-success)"/>
+  <path d="M 447 440 L 370 440 L 370 663" fill="none" stroke="#10B981" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-success)"/>
+
+  <!-- gateway-go → Upstream (direct) -->
+  <path d="M 860 450 L 860 435 L 810 435 L 810 663" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,4"/>
+  <path d="M 860 450 L 860 435 L 590 435 L 590 663" fill="none" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="4,4"/>
+
+  <!-- ===== FOOTER / STATUS ===== -->
+  <rect x="30" y="745" width="1140" height="55" rx="8" fill="#1e293b"/>
+  <text x="50" y="768" font-size="11" font-weight="bold" fill="#94a3b8">📋 项目状态</text>
+  <text x="50" y="785" font-size="10" fill="#64748b">LiteLLM 网关</text>
+  <circle cx="126" cy="782" r="4" fill="#22c55e"/>
+  <text x="135" y="785" font-size="10" fill="#a3e635">健康</text>
+
+  <text x="210" y="785" font-size="10" fill="#64748b">用户管理</text>
+  <circle cx="262" cy="782" r="4" fill="#22c55e"/>
+  <text x="271" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <text x="350" y="785" font-size="10" fill="#64748b">Key 管理</text>
+  <circle cx="402" cy="782" r="4" fill="#22c55e"/>
+  <text x="411" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <text x="490" y="785" font-size="10" fill="#64748b">计费/配额</text>
+  <circle cx="542" cy="782" r="4" fill="#22c55e"/>
+  <text x="551" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <text x="630" y="785" font-size="10" fill="#64748b">上游切换</text>
+  <circle cx="682" cy="782" r="4" fill="#22c55e"/>
+  <text x="691" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <text x="770" y="785" font-size="10" fill="#64748b">Codex 兼容</text>
+  <circle cx="822" cy="782" r="4" fill="#22c55e"/>
+  <text x="831" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <text x="910" y="785" font-size="10" fill="#64748b">Web UI</text>
+  <circle cx="942" cy="782" r="4" fill="#22c55e"/>
+  <text x="951" y="785" font-size="10" fill="#a3e635">完成</text>
+
+  <!-- Version -->
+  <text x="1140" y="790" text-anchor="end" font-size="10" fill="#475569">v2.0.0-go · 2026-07</text>
+</svg>
