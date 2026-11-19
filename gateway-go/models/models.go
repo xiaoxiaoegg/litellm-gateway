@@ -21,7 +21,8 @@ type User struct {
 	Username        string       `gorm:"uniqueIndex;size:64;not null" json:"username"`
 	PasswordHash    string       `gorm:"size:256;not null" json:"-"` // 密码哈希，绝不外泄
 	Balance         float64      `gorm:"type:numeric(12,4);default:0" json:"balance"`
-	Role            string       `gorm:"size:16;default:user" json:"role"` // "user" 或 "admin"
+	Role            string       `gorm:"size:16;default:user" json:"role"` // "user" / "admin" / "superadmin"
+	TeamID          *uuid.UUID   `gorm:"type:uuid;index" json:"team_id"`   // 所属团队（可空）
 	IsActive        bool         `gorm:"default:true" json:"is_active"`
 	DailyQuota      int64        `gorm:"default:0" json:"daily_quota"`       // 每日 token 上限，0 表示不限
 	UsedDailyTokens int64        `gorm:"default:0" json:"used_daily_tokens"` // 已用（按天滚动重置）
@@ -70,6 +71,30 @@ type ModelPricing struct {
 	CompletionPricePer1k float64   `gorm:"type:numeric(10,6);default:0" json:"completion_price_per_1k"`
 	Currency             string    `gorm:"size:8;default:points" json:"currency"`
 	CreatedAt            time.Time `json:"created_at"`
+}
+
+// Team 是团队/项目分组，用于把用户按组织归类、隔离资源与预算。
+// 当前实现为独立实体：可增删查，用户通过 User.TeamID 关联到某个团队。
+type Team struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Name        string    `gorm:"uniqueIndex;size:64;not null" json:"name"`
+	Description string    `gorm:"type:text" json:"description"`
+	MonthBudget float64   `gorm:"type:numeric(12,4);default:0" json:"month_budget"` // 团队月度预算（点），0 表示不限
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// RedemptionCode 是兑换码/充值码：由管理员批量生成，用户输入后按 Value 充值到余额。
+// Status: "active"(未使用) / "used"(已用) / "disabled"(作废)。
+type RedemptionCode struct {
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	Code       string     `gorm:"uniqueIndex;size:64;not null" json:"code"`
+	Value      float64    `gorm:"type:numeric(12,4);not null" json:"value"` // 面额（点）
+	Status     string     `gorm:"size:16;default:active;index" json:"status"`
+	UsedBy     *uuid.UUID `gorm:"type:uuid" json:"used_by"` // 使用者 user_id
+	UsedByName string     `gorm:"size:64" json:"used_by_name"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UsedAt     *time.Time `json:"used_at"`
 }
 
 // UsageRecord 是每次模型调用的用量/花费明细（计费后写入），统计看板从这里聚合。

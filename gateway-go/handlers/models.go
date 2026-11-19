@@ -50,6 +50,10 @@ var ModelMap = map[string]string{
 	"qwen-plus":            "qwen-plus",
 	"qwen-turbo":           "qwen-plus",
 	"qwen2.5-72b-instruct": "qwen-max",
+	// 智谱 GLM 系列：显式映射成自身，让客户端能直接指定用 GLM（否则会被下方 glm- 前缀兜底改写到 deepseek-chat）
+	"glm-4-flash":      "glm-4-flash",
+	"glm-4-flash-fast": "glm-4-flash-fast",
+	"glm-4-plus":       "glm-4-flash",
 	// Codex 实际会发送的 deepseek 推理模型名（未显式映射时也会走前缀兜底，这里显式列出更清晰）
 	"deepseek-v4-pro":   "deepseek-chat",
 	"deepseek-reasoner": "deepseek-chat",

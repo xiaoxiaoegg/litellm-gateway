@@ -1,5 +1,5 @@
 // 包 database 负责数据库连接初始化与建表迁移。
-//
+// 依赖 GORM + PostgreSQL，使用 gorm.io/gorm + gorm.io/driver/postgres。
 // 网关使用 PostgreSQL + GORM。Init() 在 main 启动时调用一次，
 // 它读取数据库连接串、建连接、自动迁移所有模型表，并写入种子数据。
 package database
@@ -43,6 +43,8 @@ func Init() {
 		&models.ModelPricing{},
 		&models.UsageRecord{},
 		&models.Transaction{},
+		&models.Team{},
+		&models.RedemptionCode{},
 	)
 
 	// 首次启动写入 admin 账号与默认模型定价。

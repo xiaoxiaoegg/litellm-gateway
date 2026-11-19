@@ -5,15 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Token 中转站 — 登录</title>
 
-  <!-- ====== 外部依赖 ====== -->
-  <!-- Tailwind CSS (CDN): 整个项目的样式框架，通过 tailwind.config 扩展颜色 -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Alpine.js (CDN): 轻量级响应式框架，驱动登录/注册表单的交互逻辑 -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <!-- Inter 字体: 项目唯一的正文字体，清晰、现代、在数据密集场景下可读性好 -->
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- ====== 本地依赖(已本地化, 不再依赖外网 CDN) ====== -->
+  <!-- Tailwind CSS: 整个项目的样式框架，通过 tailwind.config 扩展颜色 -->
+  <script src="/vendor/tailwind.js"></script>
+  <!-- Alpine.js: 轻量级响应式框架，驱动登录/注册表单的交互逻辑 -->
+  <script defer src="/vendor/alpine.min.js"></script>
 
   <!-- ====== Tailwind 主题配置 ======
        扩展了默认颜色：
@@ -160,6 +156,7 @@
             // 认证成功 → 存 token，跳转首页
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('role', data.role);
+            localStorage.setItem('username', data.username || this.form.username || '');
             window.location.href = '/';
           } catch(e) { this.error = '网络错误，请检查服务状态'; }
           finally { this.loading = false; }
@@ -177,12 +174,27 @@
             if (!res.ok) { this.error = data.detail; return; }
             localStorage.setItem('token', data.access_token);
             localStorage.setItem('role', data.role);
+            localStorage.setItem('username', data.username || this.form.username || '');
             window.location.href = '/';
           } catch(e) { this.error = '网络错误，请检查服务状态'; }
           finally { this.loading = false; }
         }
       };
     }
+  </script>
+  <script>
+    // 安全网：若 2.5s 后 Alpine 仍未初始化（body 仍带 x-cloak），说明本地 JS 没加载成功，
+    // 绝大多数情况是浏览器缓存了旧版页面（旧版从外部 CDN 加载 Alpine，被网络拦截）。
+    // 不再静默白屏，直接提示用户强制刷新。
+    setTimeout(function () {
+      if (document.body && document.body.hasAttribute('x-cloak')) {
+        document.body.removeAttribute('x-cloak');
+        var b = document.createElement('div');
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:12px 16px;font:14px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;text-align:center';
+        b.textContent = '⚠️ 页面脚本未加载（多为浏览器缓存了旧版）。请按 Cmd+Shift+R 强制刷新，或开无痕窗口访问。';
+        document.body.appendChild(b);
+      }
+    }, 2500);
   </script>
 </body>
 </html>

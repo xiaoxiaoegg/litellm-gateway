@@ -1,9 +1,9 @@
 services:
   nginx:
     image: nginx:1.27-alpine
+    # 例：本地用 1221，访问 https://你的IP或域名:1221 ；部署到服务器且 443 空闲时改回 "443:443" 即可。
     ports:
-      - "80:80"
-      - "443:443"
+      - "1221:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d
       - ./nginx/ssl:/etc/nginx/ssl
@@ -14,7 +14,7 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     volumes:
       - ./litellm-config.yaml:/app/config.yaml
     command: ["--config", "/app/config.yaml", "--port", "4000"]
@@ -96,7 +96,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.55.0
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
@@ -107,7 +107,7 @@ services:
   grafana:
     image: grafana/grafana:11.2.0
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning

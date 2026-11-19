@@ -109,7 +109,7 @@ func RechargeUser(c *gin.Context) {
 	}
 	// 原子加余额（基于查出来的旧值；并发充值极端情况可用 SQL 表达式，这里简单处理）。
 	database.DB.Model(&user).UpdateColumn("balance", user.Balance+req.Amount)
-	txn := models.Transaction{UserID: user.ID, Amount: req.Amount, Type: "recharge", Description: req.Description}
+	txn := models.Transaction{ID: uuid.New(), UserID: user.ID, Amount: req.Amount, Type: "recharge", Description: req.Description}
 	database.DB.Create(&txn)
 	c.JSON(200, gin.H{"balance": user.Balance + req.Amount})
 }
@@ -131,7 +131,7 @@ func DeductUser(c *gin.Context) {
 		return
 	}
 	database.DB.Model(&user).UpdateColumn("balance", user.Balance-req.Amount)
-	txn := models.Transaction{UserID: user.ID, Amount: -req.Amount, Type: "deduct", Description: req.Description}
+	txn := models.Transaction{ID: uuid.New(), UserID: user.ID, Amount: -req.Amount, Type: "deduct", Description: req.Description}
 	database.DB.Create(&txn)
 	c.JSON(200, gin.H{"balance": user.Balance - req.Amount})
 }

@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -60,6 +61,7 @@ func main() {
 		user.GET("/balance", handlers.GetBalance)            // 查余额
 		user.GET("/transactions", handlers.ListTransactions) // 交易流水
 		user.GET("/usage", handlers.ListUsage)               // 用量明细
+		user.POST("/redeem", handlers.RedeemCode)            // 兑换码充值（普通用户）
 	}
 
 	// ── 管理后台路由组：/api/admin ──
@@ -82,6 +84,25 @@ func main() {
 
 		admin.GET("/stats", handlers.GetStats)                   // 今日/本周/全局统计看板数据
 		admin.GET("/stats/daily", handlers.GetDailyStats)        // 按天聚合(支持 days 查询参数，供看板时间范围筛选)
+
+		// 团队管理（admin/superadmin）
+		admin.GET("/teams", handlers.ListTeams)          // 团队列表（含成员数）
+		admin.POST("/teams", handlers.CreateTeam)        // 新建团队
+		admin.DELETE("/teams/:id", handlers.DeleteTeam)  // 删除团队
+
+		// 兑换码管理（admin/superadmin）
+		admin.GET("/redemption", handlers.ListCodes)            // 兑换码列表
+		admin.POST("/redemption", handlers.GenerateCodes)       // 批量生成兑换码
+		admin.DELETE("/redemption/:id", handlers.DeleteCode)    // 删除/作废兑换码
+	}
+
+	// ── 超级管理员路由组：/api/superadmin ──
+	// 需要 JWT 且角色必须为 superadmin（SuperAdminOnly 拦截 admin 与普通用户）。
+	sa := r.Group("/api/superadmin")
+	sa.Use(middleware.JWTAuth(), middleware.SuperAdminOnly())
+	{
+		sa.POST("/users/:id/role", handlers.ChangeRole) // 变更用户角色（授予/回收管理员）
+		sa.GET("/system", handlers.SystemInfo)          // 平台运行信息 / 性能监控
 	}
 
 	// Prometheus 指标端点：故意不加鉴权，因为 Prometheus 抓取时不会带我们的 API Key。
@@ -104,6 +125,14 @@ func main() {
 
 	// 静态前端：兜底路由，把未匹配的请求当作静态文件服务（前端管理页面放在 /static）。
 	r.NoRoute(func(c *gin.Context) {
+		// 对 HTML 页面（含根路径 /）禁用浏览器缓存，避免缓存到旧版
+		// （旧版引用被墙的 CDN，会导致 Alpine/Tailwind 加载失败、页面白屏）。
+		// vendor 下的 .js 资源带文件名版本，可正常缓存。
+		p := c.Request.URL.Path
+		if p == "/" || strings.HasSuffix(p, ".html") {
+			c.Header("Cache-Control", "no-store")
+			c.Header("Pragma", "no-cache")
+		}
 		http.FileServer(http.Dir("/static")).ServeHTTP(c.Writer, c.Request)
 	})
 

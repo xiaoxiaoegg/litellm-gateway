@@ -60,12 +60,26 @@ func JWTAuth() gin.HandlerFunc {
 	}
 }
 
-// AdminOnly 必须配合 JWTAuth 使用：仅当用户角色为 admin 才放行，否则 403。
+// AdminOnly 必须配合 JWTAuth 使用：管理员(admin)或超级管理员(superadmin)才放行，否则 403。
+// 超级管理员天然拥有管理员的一切权限（权限递进：user ⊂ admin ⊂ superadmin）。
 func AdminOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		role, _ := c.Get("role")
-		if role != "admin" {
+		if role != "admin" && role != "superadmin" {
 			c.AbortWithStatusJSON(403, gin.H{"detail": "需要管理员权限"})
+			return
+		}
+		c.Next()
+	}
+}
+
+// SuperAdminOnly 必须配合 JWTAuth 使用：仅超级管理员(superadmin)才放行，否则 403。
+// 用于平台级最高权限接口（角色变更、系统信息等）。
+func SuperAdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		role, _ := c.Get("role")
+		if role != "superadmin" {
+			c.AbortWithStatusJSON(403, gin.H{"detail": "需要超级管理员权限"})
 			return
 		}
 		c.Next()

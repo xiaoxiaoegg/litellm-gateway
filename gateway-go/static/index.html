@@ -5,14 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Token 中转站</title>
 
-  <!-- ====== 外部依赖 ====== -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <!-- ====== 本地依赖(已本地化, 不再依赖外网 CDN) ====== -->
+  <script src="/vendor/tailwind.js"></script>
+  <script defer src="/vendor/alpine.min.js"></script>
   <!-- Chart.js: 数据看板的图表渲染库 -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="/vendor/chart.umd.min.js"></script>
 
   <!-- ====== Tailwind 主题配置 ======
        扩展了:
@@ -90,6 +87,22 @@
     }
     .nav-item:hover { background: var(--sidebar-active); color: var(--sidebar-text); }
     .nav-item.active { background: var(--sidebar-active); color: var(--sidebar-text); border-left-color: #0d9488; }
+
+    /* ---- 侧边栏独立滚动条 ----
+       导航项过多时，<nav> 内部出现竖向滚动条；
+       flex 列子项需要 min-h-0 才能收缩并触发内部滚动 (已在 nav 上加 min-h-0)。
+       这里把滚动条做成常驻细条(默认悬浮不可见，故显式常驻)。 */
+    .sidebar-scroll { scrollbar-width: thin; scrollbar-color: #4b5563 transparent; }
+    .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+    .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
+    .sidebar-scroll::-webkit-scrollbar-thumb {
+      background-color: #4b5563; border-radius: 3px;
+    }
+    .sidebar-scroll::-webkit-scrollbar-thumb:hover { background-color: #6b7280; }
+    /* Firefox 始终显示细滚动条 */
+    @supports (scrollbar-width: thin) {
+      .sidebar-scroll { scrollbar-width: thin; }
+    }
 
     /* ---- 脉冲点动画 (签名元素) ----
        激活的导航项右侧显示一个 teal 小圆点，
@@ -184,7 +197,7 @@
            - 包含: 品牌区 + 用户导航 + 管理员导航 + 用户信息
            ================================================================ -->
       <!-- 侧边栏: 桌面端静态常驻(md:static); 移动端改为左侧抽屉(fixed + translate 切换) -->
-      <aside class="w-56 bg-[var(--sidebar-bg)] flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 md:static md:translate-x-0"
+      <aside class="w-56 bg-[var(--sidebar-bg)] flex flex-col flex-shrink-0 fixed inset-y-0 left-0 z-40 transform transition-transform duration-200 md:static md:translate-x-0 md:h-screen md:overflow-hidden"
              :class="sidebarOpen ? 'translate-x-0' : '-translate-x-full'">
 
         <!-- 品牌区: logo + 应用名 -->
@@ -196,12 +209,12 @@
         </div>
 
         <!-- 导航区: 用户菜单 + (管理员菜单，仅 admin 可见) -->
-        <nav class="flex-1 py-3 space-y-0.5 px-4 overflow-y-auto">
+        <nav class="flex-1 min-h-0 py-3 space-y-0.5 px-4 overflow-y-auto sidebar-scroll">
           <!-- ---- 用户导航项 ----
                由 userTabs getter 动态生成 (概览 / API Keys / 交易记录 / 使用记录)
                点击切换 currentTab，点击"概览"时自动刷新数据 -->
           <template x-for="tab in userTabs" :key="tab.id">
-            <a @click="currentTab=tab.id; if(tab.id==='dashboard') refreshStats(); if(tab.id==='admin-dashboard-viz') loadStatsAndRender()"
+            <a @click="onTab(tab.id)"
               :class="currentTab===tab.id ? 'nav-item active' : 'nav-item'"
               class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer text-[var(--sidebar-muted)]">
               <span class="relative inline-flex items-center justify-center w-4 h-4" x-html="tab.icon"></span>
@@ -212,18 +225,34 @@
           </template>
 
           <!-- ---- 管理员分隔线 ----
-               仅 role==='admin' 时显示，将用户菜单和管理菜单视觉分隔 -->
-          <template x-if="role==='admin'">
+               role 为 admin / superadmin 时显示，分隔用户菜单与管理菜单 -->
+          <template x-if="adminTabs.length">
             <div class="mt-5 mb-2">
-              <span class="block px-3 text-[11px] font-semibold uppercase tracking-widest text-[var(--sidebar-muted)]/40">管理</span>
+              <span class="block px-3 text-[11px] font-semibold uppercase tracking-widest text-[var(--sidebar-muted)]/40">管理员</span>
             </div>
           </template>
 
-          <!-- ---- 管理员导航项 ----
-               由 adminTabs getter 动态生成 (用户管理 / 上游 Key / 模型定价)
-               仅 role==='admin' 时 adminTabs 有内容 -->
+          <!-- ---- 管理员导航项 ---- 由 adminTabs getter 动态生成 -->
           <template x-for="tab in adminTabs" :key="tab.id">
-            <a @click="currentTab=tab.id"
+            <a @click="onTab(tab.id)"
+              :class="currentTab===tab.id ? 'nav-item active' : 'nav-item'"
+              class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer text-[var(--sidebar-muted)]">
+              <span class="relative inline-flex items-center justify-center w-4 h-4" x-html="tab.icon"></span>
+              <span x-text="tab.label"></span>
+              <span x-show="currentTab===tab.id" class="pulse-dot relative w-1.5 h-1.5 rounded-full bg-accent-500 ml-auto"></span>
+            </a>
+          </template>
+
+          <!-- ---- 超级管理员分隔线 ---- 仅 superadmin 显示 -->
+          <template x-if="superadminTabs.length">
+            <div class="mt-5 mb-2">
+              <span class="block px-3 text-[11px] font-semibold uppercase tracking-widest text-amber-500/60">超级管理员</span>
+            </div>
+          </template>
+
+          <!-- ---- 超级管理员导航项 ---- 由 superadminTabs getter 动态生成 -->
+          <template x-for="tab in superadminTabs" :key="tab.id">
+            <a @click="onTab(tab.id)"
               :class="currentTab===tab.id ? 'nav-item active' : 'nav-item'"
               class="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm cursor-pointer text-[var(--sidebar-muted)]">
               <span class="relative inline-flex items-center justify-center w-4 h-4" x-html="tab.icon"></span>
@@ -236,11 +265,18 @@
         <!-- 用户信息区: 头像 + 用户名 + 积分余额 + 退出按钮 -->
         <div class="border-t border-white/[0.05] p-3">
           <div class="flex items-center gap-2.5">
-            <div class="w-7 h-7 rounded-full bg-accent-600 flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0">A</div>
+            <div class="w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-semibold flex-shrink-0"
+                 :class="role==='superadmin' ? 'bg-amber-500' : (role==='admin' ? 'bg-accent-600' : 'bg-slate-500')"
+                 x-text="(username||'U').slice(0,1).toUpperCase()"></div>
             <div class="flex-1 min-w-0">
-              <p class="text-xs text-white font-medium truncate">Admin</p>
-              <!-- userBalance 是 /api/auth/me 返回的余额 -->
-              <p class="text-[11px] text-[var(--sidebar-muted)]" x-text="'积分 ' + userBalance.toFixed(0)"></p>
+              <p class="text-xs text-white font-medium truncate" x-text="username || '用户'"></p>
+              <!-- 角色徽章 + 积分余额 -->
+              <p class="text-[11px] flex items-center gap-1.5">
+                <span class="px-1.5 py-px rounded text-[10px] font-medium"
+                      :class="role==='superadmin' ? 'bg-amber-500/15 text-amber-400' : (role==='admin' ? 'bg-teal-500/15 text-teal-300' : 'bg-slate-500/20 text-slate-300')"
+                      x-text="roleLabel(role)"></span>
+                <span class="text-[var(--sidebar-muted)]" x-text="'积分 ' + userBalance.toFixed(0)"></span>
+              </p>
             </div>
             <!-- 退出按钮: 清除 localStorage 并跳转到首页 (触发未登录状态) -->
             <button @click="logout()" class="text-[var(--sidebar-muted)] hover:text-red-400 transition-colors flex-shrink-0" title="退出登录">
@@ -551,9 +587,9 @@
                       <td class="py-2.5 text-center text-xs" x-text="u.key_count"></td>
                       <td class="py-2.5 text-right font-mono text-xs text-[#dc2626] tabular-nums" x-text="u.total_spent.toFixed(2)"></td>
                       <td class="py-2.5 text-center">
-                        <span :class="u.role === 'admin' ? 'bg-accent-50 text-accent-700 border-accent-200' : 'bg-[var(--row-alt)] text-[var(--muted)] border-[var(--border)]'"
+                        <span :class="u.role === 'superadmin' ? 'bg-amber-50 text-amber-700 border-amber-200' : (u.role === 'admin' ? 'bg-accent-50 text-accent-700 border-accent-200' : 'bg-[var(--row-alt)] text-[var(--muted)] border-[var(--border)]')"
                           class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium"
-                          x-text="u.role === 'admin' ? '管理员' : '用户'"></span>
+                          x-text="roleLabel(u.role)"></span>
                       </td>
                       <td class="py-2.5 text-right space-x-3">
                         <button @click="rechargeUser(u.id)" class="text-[11px] font-medium text-emerald-600 hover:text-emerald-700 transition-colors">充值</button>
@@ -761,7 +797,7 @@
             <p class="text-sm text-[var(--muted)] mb-5">用量趋势与模型消耗可视化</p>
 
             <!-- 时间范围筛选: 仅管理员可用(按天聚合接口需 admin)。切换时调用 setRange 重新拉取并渲染 -->
-            <div class="flex items-center gap-2 mb-5" x-show="role==='admin'">
+            <div class="flex items-center gap-2 mb-5" x-show="isAdmin">
               <span class="text-xs text-[var(--muted)]">时间范围</span>
               <div class="inline-flex bg-[var(--row-alt)] p-1 rounded-md">
                 <template x-for="d in [7,14,30]" :key="d">
@@ -806,7 +842,7 @@
             </div>
 
             <!-- ---- 第二排指标卡(仅 admin): 活跃 Keys / 总用户数 / 总营收 ---- -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" x-show="role==='admin'">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6" x-show="isAdmin">
               <div class="stat-card bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
                 <div class="h-0.5 bg-emerald-500"></div>
                 <div class="p-5 pt-[calc(1.25rem-2px)]">
@@ -864,7 +900,7 @@
             </div>
 
             <!-- ---- Top 用户消耗排行(仅 admin): 按 total_spent 降序取前 5，进度条按 topUserMax 归一化 ---- -->
-            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden mt-4" x-show="role==='admin'">
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden mt-4" x-show="isAdmin">
               <div class="px-5 py-3.5 border-b border-[var(--border)]">
                 <h3 class="text-sm font-semibold text-[var(--text)]">Top 用户消耗排行</h3>
               </div>
@@ -940,6 +976,607 @@ experimental_bearer_token = "你的API_Key"</code></pre>
             </div>
           </div>
 
+          <!-- ==================================================================
+               TAB: 模型广场 (model-plaza) — 所有用户
+               浏览可调用的模型：从 modelProviders 参考表 + 已配置定价(pricingList)
+               显示模型是否已在本网关配置定价，可直接复制模型名
+               ================================================================== -->
+          <div x-show="currentTab === 'model-plaza' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">模型广场</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">浏览本网关支持的模型，复制模型名即可在 API 中调用</p>
+            <div class="mb-4">
+              <input x-model="modelSearch" type="text" placeholder="搜索模型 / 供应商…"
+                class="w-full sm:w-72 px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500">
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <template x-for="m in modelProviders.filter(x => !modelSearch || (x.name+x.provider+x.note).toLowerCase().includes(modelSearch.toLowerCase()))" :key="m.name">
+                <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4 flex flex-col gap-2">
+                  <div class="flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                      <div class="font-mono text-sm text-[var(--text)] truncate" x-text="m.name"></div>
+                      <div class="text-[11px] text-[var(--muted)] mt-0.5" x-text="m.provider"></div>
+                    </div>
+                    <span x-show="pricingList.some(p => p.model_name === m.name)"
+                      class="shrink-0 inline-flex items-center text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-medium">已配置</span>
+                  </div>
+                  <p class="text-xs text-[var(--muted)] leading-relaxed line-clamp-2" x-text="m.note"></p>
+                  <div class="flex items-center gap-3 mt-1">
+                    <button @click="copyText(m.name)" class="text-[11px] font-medium text-accent-600 hover:text-accent-700">复制模型名</button>
+                    <a :href="m.hub" target="_blank" class="text-[11px] font-medium text-[var(--muted)] hover:text-[var(--text)]">获取 Key ↗</a>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 兑换充值 (redeem) — 所有用户
+               输入兑换码充值积分：POST /api/user/redeem
+               ================================================================== -->
+          <div x-show="currentTab === 'redeem' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">兑换充值</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">输入兑换码为账户充值积分</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 max-w-md">
+              <div class="flex items-center justify-between mb-4">
+                <span class="text-sm text-[var(--muted)]">当前余额</span>
+                <span class="text-xl font-bold text-[var(--text)] tabular-nums" x-text="userBalance.toFixed(2)"></span>
+              </div>
+              <label class="block text-xs font-medium text-[var(--muted)] mb-1.5">兑换码</label>
+              <input x-model="redeemInput" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+                class="w-full px-3 py-2 text-sm font-mono rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500 mb-3"
+                @keydown.enter="redeemCode()">
+              <button @click="redeemCode()" class="w-full py-2 rounded-md bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium transition-colors">立即兑换</button>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 团队管理 (admin-teams) — admin / superadmin
+               创建团队 / 查看成员数 / 删除团队
+               API: GET/POST /api/admin/teams, DELETE /api/admin/teams/:id
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-teams' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">团队管理</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">创建团队并设置月度预算</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4 mb-5">
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <input x-model="teamForm.name" placeholder="团队名称" class="px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500">
+                <input x-model="teamForm.description" placeholder="描述(可选)" class="px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500">
+                <input x-model.number="teamForm.month_budget" type="number" placeholder="月度预算" class="px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500">
+                <button @click="createTeam()" class="py-2 rounded-md bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium transition-colors">创建团队</button>
+              </div>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] font-medium uppercase tracking-wider">
+                  <th class="text-left py-2.5 px-4">团队名称</th><th class="text-left py-2.5">描述</th>
+                  <th class="text-center py-2.5">成员数</th><th class="text-right py-2.5">月度预算</th><th class="text-right py-2.5 px-4">操作</th>
+                </tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="t in teams" :key="t.id">
+                    <tr class="hover:bg-[var(--bg)]">
+                      <td class="py-2.5 px-4 text-sm font-medium text-[var(--text)]" x-text="t.name"></td>
+                      <td class="py-2.5 text-xs text-[var(--muted)]" x-text="t.description || '-'"></td>
+                      <td class="py-2.5 text-center text-xs" x-text="t.member_count"></td>
+                      <td class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="(t.month_budget ?? 0).toFixed(2)"></td>
+                      <td class="py-2.5 px-4 text-right"><button @click="deleteTeam(t.id)" class="text-[11px] font-medium text-[#dc2626] hover:text-red-600">删除</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="teams.length === 0" class="text-center text-sm text-[var(--muted-2)] py-4">暂无团队</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 兑换码 (admin-redemption) — admin / superadmin
+               批量生成兑换码 / 查看状态 / 删除
+               API: GET/POST /api/admin/redemption, DELETE /api/admin/redemption/:id
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-redemption' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">兑换码</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">批量生成兑换码，供用户在「兑换充值」中使用</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4 mb-5">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div><label class="block text-[11px] text-[var(--muted)] mb-1">生成数量</label>
+                  <input x-model.number="codeGen.count" type="number" min="1" class="w-full px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500"></div>
+                <div><label class="block text-[11px] text-[var(--muted)] mb-1">每张面额(积分)</label>
+                  <input x-model.number="codeGen.value" type="number" min="1" class="w-full px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500"></div>
+                <div class="flex items-end"><button @click="generateCodes()" class="w-full py-2 rounded-md bg-accent-600 hover:bg-accent-700 text-white text-sm font-medium transition-colors">批量生成</button></div>
+              </div>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] font-medium uppercase tracking-wider">
+                  <th class="text-left py-2.5 px-4">兑换码</th><th class="text-right py-2.5">面额</th>
+                  <th class="text-center py-2.5">状态</th><th class="text-left py-2.5">使用者</th><th class="text-right py-2.5 px-4">操作</th>
+                </tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="c in codes" :key="c.id">
+                    <tr class="hover:bg-[var(--bg)]">
+                      <td class="py-2.5 px-4"><span class="font-mono text-xs text-[var(--text)]" x-text="c.code"></span>
+                        <button @click="copyText(c.code)" class="ml-2 text-[10px] text-accent-600 hover:text-accent-700">复制</button></td>
+                      <td class="py-2.5 text-right font-mono text-xs tabular-nums" x-text="(c.value ?? 0).toFixed(2)"></td>
+                      <td class="py-2.5 text-center">
+                        <span :class="c.status === 'active' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (c.status === 'used' ? 'bg-[var(--row-alt)] text-[var(--muted)] border-[var(--border)]' : 'bg-red-50 text-[#dc2626] border-red-200')"
+                          class="inline-flex items-center text-[10px] px-2 py-0.5 rounded-full border font-medium"
+                          x-text="c.status === 'active' ? '未使用' : (c.status === 'used' ? '已使用' : '已禁用')"></span>
+                      </td>
+                      <td class="py-2.5 text-xs text-[var(--muted)]" x-text="c.used_by_name || '-'"></td>
+                      <td class="py-2.5 px-4 text-right"><button @click="deleteCode(c.id)" class="text-[11px] font-medium text-[#dc2626] hover:text-red-600">删除</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="codes.length === 0" class="text-center text-sm text-[var(--muted-2)] py-4">暂无兑换码</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 预算管理 (admin-budgets) — admin / superadmin
+               只读汇总：各团队月度预算与成员数（数据来自 teams）
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-budgets' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">预算管理</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">团队月度预算总览（在「团队管理」中设置）</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                <div class="text-[11px] text-[var(--muted)] mb-1">团队总数</div>
+                <div class="text-2xl font-bold text-[var(--text)] tabular-nums" x-text="teams.length"></div>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                <div class="text-[11px] text-[var(--muted)] mb-1">月度预算合计</div>
+                <div class="text-2xl font-bold text-[var(--text)] tabular-nums" x-text="teams.reduce((s,t)=>s+(t.month_budget||0),0).toFixed(2)"></div>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                <div class="text-[11px] text-[var(--muted)] mb-1">团队成员合计</div>
+                <div class="text-2xl font-bold text-[var(--text)] tabular-nums" x-text="teams.reduce((s,t)=>s+(t.member_count||0),0)"></div>
+              </div>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] font-medium uppercase tracking-wider">
+                  <th class="text-left py-2.5 px-4">团队</th><th class="text-center py-2.5">成员数</th><th class="text-right py-2.5 px-4">月度预算</th>
+                </tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="t in teams" :key="t.id">
+                    <tr class="hover:bg-[var(--bg)]">
+                      <td class="py-2.5 px-4 text-sm font-medium text-[var(--text)]" x-text="t.name"></td>
+                      <td class="py-2.5 text-center text-xs" x-text="t.member_count"></td>
+                      <td class="py-2.5 px-4 text-right font-mono text-xs tabular-nums" x-text="(t.month_budget ?? 0).toFixed(2)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="teams.length === 0" class="text-center text-sm text-[var(--muted-2)] py-4">暂无团队，请先在「团队管理」创建</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 角色管理 (sa-roles) — 仅 superadmin
+               变更用户角色：user / admin / superadmin
+               API: POST /api/superadmin/users/:id/role
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-roles' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">角色管理</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">为用户分配普通用户 / 管理员 / 超级管理员角色</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] font-medium uppercase tracking-wider">
+                  <th class="text-left py-2.5 px-4">用户名</th><th class="text-center py-2.5">当前角色</th>
+                  <th class="text-left py-2.5">变更为</th><th class="text-right py-2.5 px-4">操作</th>
+                </tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="u in allUsers" :key="u.id">
+                    <tr class="hover:bg-[var(--bg)]">
+                      <td class="py-2.5 px-4 text-sm font-medium text-[var(--text)]" x-text="u.username"></td>
+                      <td class="py-2.5 text-center">
+                        <span :class="u.role === 'superadmin' ? 'bg-amber-50 text-amber-700 border-amber-200' : (u.role === 'admin' ? 'bg-accent-50 text-accent-700 border-accent-200' : 'bg-[var(--row-alt)] text-[var(--muted)] border-[var(--border)]')"
+                          class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full border font-medium" x-text="roleLabel(u.role)"></span>
+                      </td>
+                      <td class="py-2.5">
+                        <select x-model="roleTarget[u.id]" class="px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-accent-500">
+                          <option value="">选择角色…</option>
+                          <option value="user">普通用户</option>
+                          <option value="admin">管理员</option>
+                          <option value="superadmin">超级管理员</option>
+                        </select>
+                      </td>
+                      <td class="py-2.5 px-4 text-right"><button @click="changeRole(u.id)" class="text-[11px] font-medium text-accent-600 hover:text-accent-700">应用</button></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="allUsers.length === 0" class="text-center text-sm text-[var(--muted-2)] py-4">暂无用户</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 系统信息 (sa-system) — 仅 superadmin
+               版本 / Go 运行时 / 内存 / uptime / 各实体计数
+               API: GET /api/superadmin/system
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-system' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">系统信息</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">网关运行时状态与数据统计</p>
+            <div x-show="!systemInfo" class="text-sm text-[var(--muted-2)]">加载中…</div>
+            <template x-if="systemInfo">
+              <div class="space-y-5">
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">版本</div>
+                    <div class="text-sm font-semibold text-[var(--text)]" x-text="systemInfo.version || '-'"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">Go 运行时</div>
+                    <div class="text-sm font-semibold text-[var(--text)]" x-text="systemInfo.go_version || '-'"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">运行时长</div>
+                    <div class="text-sm font-semibold text-[var(--text)]" x-text="fmtUptime(systemInfo.uptime_seconds)"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">内存(Alloc)</div>
+                    <div class="text-sm font-semibold text-[var(--text)]" x-text="(systemInfo.mem_alloc_mb ?? 0).toFixed(1) + ' MB'"></div>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">用户总数</div>
+                    <div class="text-xl font-bold text-[var(--text)] tabular-nums" x-text="systemInfo.counts?.users ?? '-'"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">API Key 数</div>
+                    <div class="text-xl font-bold text-[var(--text)] tabular-nums" x-text="systemInfo.counts?.api_keys ?? '-'"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">团队数</div>
+                    <div class="text-xl font-bold text-[var(--text)] tabular-nums" x-text="systemInfo.counts?.teams ?? '-'"></div>
+                  </div>
+                  <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                    <div class="text-[11px] text-[var(--muted)] mb-1">兑换码数</div>
+                    <div class="text-xl font-bold text-[var(--text)] tabular-nums" x-text="systemInfo.counts?.redeem_codes ?? '-'"></div>
+                  </div>
+                </div>
+                <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                  <div class="text-[11px] text-[var(--muted)] mb-2 uppercase tracking-wider">角色分布</div>
+                  <div class="flex flex-wrap gap-4">
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-slate-400"></span><span class="text-sm text-[var(--text)]">普通用户 <span class="font-mono" x-text="systemInfo.roles?.user ?? 0"></span></span></div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-accent-500"></span><span class="text-sm text-[var(--text)]">管理员 <span class="font-mono" x-text="systemInfo.roles?.admin ?? 0"></span></span></div>
+                    <div class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span class="text-sm text-[var(--text)]">超级管理员 <span class="font-mono" x-text="systemInfo.roles?.superadmin ?? 0"></span></span></div>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ==================================================================
+               TAB: Playground 操练场 (可用) — 用户级
+               选模型 + 粘贴 API Key + 多轮流式对话，直连 /v1/chat/completions
+               ================================================================== -->
+          <div x-show="currentTab === 'playground' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">Playground 操练场</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">在线选模型、调参、多轮对话测试（粘贴你的 API Key 直连网关，无需后端支持）</p>
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-5">
+              <div class="lg:col-span-1 space-y-4">
+                <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4 space-y-3">
+                  <div>
+                    <label class="block text-xs text-[var(--muted)] mb-1">模型</label>
+                    <select x-model="pgModel" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                      <option value="">选择模型…</option>
+                      <template x-for="m in modelProviders" :key="m.name"><option :value="m.name" x-text="m.name + ' · ' + m.provider"></option></template>
+                    </select>
+                  </div>
+                  <div>
+                    <label class="block text-xs text-[var(--muted)] mb-1">API Key</label>
+                    <input type="password" x-model="pgKey" placeholder="粘贴你的 API Key" class="w-full px-2 py-1.5 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                  </div>
+                  <div>
+                    <label class="block text-xs text-[var(--muted)] mb-1">系统提示</label>
+                    <textarea x-model="pgSystem" rows="3" placeholder="可选" class="w-full px-2 py-1.5 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></textarea>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div><label class="block text-[11px] text-[var(--muted)] mb-1">温度</label><input type="number" step="0.1" min="0" max="2" x-model.number="pgTemp" class="w-full px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+                    <div><label class="block text-[11px] text-[var(--muted)] mb-1">Max Tokens</label><input type="number" step="64" x-model.number="pgMaxTokens" class="w-full px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+                  </div>
+                  <button @click="pgReset()" class="w-full text-xs text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)] rounded-md py-1.5">清空对话</button>
+                </div>
+              </div>
+              <div class="lg:col-span-3 bg-[var(--surface)] rounded-md border border-[var(--border)] flex flex-col" style="height: 62vh;">
+                <div class="flex-1 overflow-auto p-4 space-y-3" id="pg-scroll">
+                  <template x-for="(m,i) in pgMessages" :key="i">
+                    <div :class="m.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                      <div :class="m.role === 'user' ? 'bg-accent-600 text-white' : 'bg-[var(--row-alt)] text-[var(--text)]'" class="max-w-[80%] rounded-lg px-3.5 py-2 text-sm whitespace-pre-wrap" x-text="m.content"></div>
+                    </div>
+                  </template>
+                  <div x-show="pgMessages.length === 0" class="text-center text-sm text-[var(--muted-2)] py-16">选择模型并粘贴 Key 后开始对话</div>
+                  <div x-show="pgStreaming" class="flex justify-start"><div class="bg-[var(--row-alt)] rounded-lg px-3.5 py-2 text-sm text-[var(--muted)]">生成中…</div></div>
+                </div>
+                <div class="border-t border-[var(--border)] p-3 flex gap-2">
+                  <textarea x-model="pgInput" @keydown.enter.except.shift="pgSend()" rows="1" placeholder="输入消息，Enter 发送 / Shift+Enter 换行" class="flex-1 px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus resize-none"></textarea>
+                  <button @click="pgSend()" :disabled="pgStreaming || !pgModel || !pgKey" class="px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700 disabled:opacity-40">发送</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 个人设置 (settings) — 用户级, 后端部分待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'settings' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">个人设置</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">账户安全与偏好设置</p>
+            <div class="grid lg:grid-cols-2 gap-5">
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 space-y-3">
+                <h3 class="text-sm font-semibold text-[var(--text)]">修改密码</h3>
+                <input type="password" x-model="setForm.old_password" placeholder="当前密码" class="w-full px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <input type="password" x-model="setForm.new_password" placeholder="新密码" class="w-full px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <button @click="savePassword()" class="px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">更新密码</button>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 space-y-3">
+                <h3 class="text-sm font-semibold text-[var(--text)]">绑定邮箱</h3>
+                <input x-model="setForm.email" placeholder="you@example.com" class="w-full px-3 py-2 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <button @click="saveEmail()" class="px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">保存邮箱</button>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 flex items-center justify-between">
+                <div><h3 class="text-sm font-semibold text-[var(--text)]">两步验证 (2FA)</h3><p class="text-xs text-[var(--muted)] mt-0.5">登录时额外验证动态码</p></div>
+                <button @click="toggle2FA()" :class="twoFAEnabled ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="px-3 py-1.5 text-xs rounded-md" x-text="twoFAEnabled ? '已开启' : '未开启'"></button>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 space-y-3">
+                <div class="flex items-center justify-between"><h3 class="text-sm font-semibold text-[var(--text)]">Passkey 无密码登录</h3><button @click="addPasskey()" class="text-xs text-accent-600 hover:underline">+ 添加</button></div>
+                <p x-show="passkeyList.length === 0" class="text-xs text-[var(--muted-2)]">暂无绑定的 Passkey</p>
+                <template x-for="p in passkeyList" :key="p.id"><div class="text-xs text-[var(--text)] py-1" x-text="p.name"></div></template>
+              </div>
+              <div class="lg:col-span-2 bg-[var(--surface)] rounded-md border border-[var(--border)] p-5">
+                <h3 class="text-sm font-semibold text-[var(--text)] mb-3">第三方账号绑定</h3>
+                <div class="flex flex-wrap gap-2">
+                  <template x-for="a in linkedAccounts" :key="a.id"><span class="text-xs px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--text)]" x-text="a.provider"></span></template>
+                  <span x-show="linkedAccounts.length === 0" class="text-xs text-[var(--muted-2)]">尚未绑定任何第三方账号</span>
+                </div>
+                <p class="text-[11px] text-[var(--muted-2)] mt-2">提示：第三方登录需在「SSO / OAuth」中先启用对应提供方。</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 调用日志 + 操作审计 (admin-logs) — 管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-logs' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">调用日志与审计</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">全站调用明细与管理员操作留痕（后端接口待实现，前端已就绪）</p>
+            <div class="grid lg:grid-cols-2 gap-5">
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+                <div class="px-4 py-3 border-b border-[var(--border)] text-sm font-semibold text-[var(--text)]">调用日志</div>
+                <table class="w-full text-sm">
+                  <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">时间</th><th class="text-left">用户</th><th class="text-left">模型</th><th class="text-right px-4">Token</th><th class="text-center">状态</th></tr></thead>
+                  <tbody class="divide-y divide-[var(--border)]">
+                    <template x-for="l in callLogs" :key="l.id"><tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4" x-text="formatTime(l.created_at)"></td><td x-text="l.username"></td><td x-text="l.model_name"></td><td class="text-right px-4 font-mono" x-text="l.total_tokens"></td><td class="text-center"><span :class="l.status===200?'text-emerald-600':'text-red-500'" x-text="l.status"></span></td></tr></template>
+                  </tbody>
+                </table>
+                <p x-show="callLogs.length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无数据 · 后端接口待实现（前端已就绪）</p>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+                <div class="px-4 py-3 border-b border-[var(--border)] text-sm font-semibold text-[var(--text)]">操作审计</div>
+                <table class="w-full text-sm">
+                  <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">时间</th><th class="text-left">操作者</th><th class="text-left">动作</th><th class="text-left">对象</th></tr></thead>
+                  <tbody class="divide-y divide-[var(--border)]">
+                    <template x-for="a in auditLogs" :key="a.id"><tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4" x-text="formatTime(a.created_at)"></td><td x-text="a.operator"></td><td x-text="a.action"></td><td x-text="a.target"></td></tr></template>
+                  </tbody>
+                </table>
+                <p x-show="auditLogs.length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无数据 · 后端接口待实现（前端已就绪）</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 护栏监控 (admin-guardrail) — 管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-guardrail' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">护栏监控</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">敏感词 / PII / 注入防护规则与命中统计（后端接口待实现）</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full text-sm">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">规则</th><th class="text-left">类型</th><th class="text-center">状态</th><th class="text-right px-4">命中数</th><th class="text-right px-4">操作</th></tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="g in guardrails" :key="g.id"><tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4 font-medium" x-text="g.name"></td><td x-text="g.type"></td><td class="text-center"><span :class="g.enabled?'text-emerald-600':'text-[var(--muted-2)]'" x-text="g.enabled?'启用':'停用'"></span></td><td class="text-right px-4 font-mono" x-text="g.hits"></td><td class="text-right px-4"><button @click="toggleGuardrail(g.id)" class="text-[11px] text-accent-600 hover:text-accent-700" x-text="g.enabled?'停用':'启用'"></button></td></tr></template>
+                </tbody>
+              </table>
+              <p x-show="guardrails.length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无规则 · 后端接口待实现（前端已就绪）</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 订阅计划 (admin-subscriptions) — 管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'admin-subscriptions' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">订阅计划</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">按周期套餐售卖给团队 / 用户（后端接口待实现）</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 mb-5 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
+              <div class="col-span-2"><label class="block text-xs text-[var(--muted)] mb-1">套餐名</label><input x-model="planForm.name" placeholder="如 团队版" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">价格</label><input type="number" x-model.number="planForm.price" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">额度</label><input type="number" x-model.number="planForm.quota" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">周期(天)</label><input type="number" x-model.number="planForm.duration_days" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+              <div><button @click="createPlan()" class="w-full px-3 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">创建</button></div>
+              <div class="col-span-6"><label class="block text-xs text-[var(--muted)] mb-1">描述</label><input x-model="planForm.description" placeholder="套餐说明" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full text-sm">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">名称</th><th class="text-right">价格</th><th class="text-right">额度</th><th class="text-right">周期</th><th class="text-left">描述</th><th class="text-right px-4">操作</th></tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="p in plans" :key="p.id"><tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4 font-medium" x-text="p.name"></td><td class="text-right font-mono" x-text="p.price"></td><td class="text-right font-mono" x-text="p.quota"></td><td class="text-right" x-text="p.duration_days + '天'"></td><td class="text-[var(--muted)]" x-text="p.description"></td><td class="text-right px-4"><button @click="deletePlan(p.id)" class="text-[11px] text-red-500 hover:text-red-600">删除</button></td></tr></template>
+                </tbody>
+              </table>
+              <p x-show="plans.length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无计划 · 后端接口待实现（前端已就绪）</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 智能体 / MCP / 技能 (sa-agents) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-agents' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">智能体 / MCP / 技能 / 工具</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">配置 AI Agent、接入 MCP 能力源、复用技能与 Function Calling 工具（后端接口待实现）</p>
+            <div class="flex gap-2 mb-4">
+              <button @click="saAgentsTab='agents'" :class="saAgentsTab==='agents' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">智能体</button>
+              <button @click="saAgentsTab='mcp'" :class="saAgentsTab==='mcp' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">MCP 服务器</button>
+              <button @click="saAgentsTab='skills'" :class="saAgentsTab==='skills' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">技能库</button>
+              <button @click="saAgentsTab='tools'" :class="saAgentsTab==='tools' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">工具</button>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full text-sm">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">名称</th><th class="text-left">类型</th><th class="text-left">描述</th><th class="text-right px-4">状态</th></tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="row in (saAgentsTab==='agents'?agents:saAgentsTab==='mcp'?mcpServers:saAgentsTab==='skills'?skills:tools)" :key="row.id">
+                    <tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4 font-medium" x-text="row.name"></td><td x-text="row.type || saAgentsTab"></td><td class="text-[var(--muted)]" x-text="row.description"></td><td class="text-right px-4"><span :class="row.enabled?'text-emerald-600':'text-[var(--muted-2)]'" x-text="row.enabled?'启用':'停用'"></span></td></tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="(saAgentsTab==='agents'?agents:saAgentsTab==='mcp'?mcpServers:saAgentsTab==='skills'?skills:tools).length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无数据 · 后端接口待实现（前端已就绪）</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 护栏与策略 (sa-policies) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-policies' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">护栏与策略</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">平台级路由、限流、重试、缓存与成本控制（后端接口待实现）</p>
+            <div class="grid lg:grid-cols-2 gap-5">
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 space-y-3">
+                <h3 class="text-sm font-semibold text-[var(--text)]">限流（每 Key）</h3>
+                <div class="grid grid-cols-2 gap-2"><div><label class="block text-[11px] text-[var(--muted)] mb-1">RPM</label><input type="number" x-model.number="policyForm.rpm_per_key" class="w-full px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div><div><label class="block text-[11px] text-[var(--muted)] mb-1">TPM</label><input type="number" x-model.number="policyForm.tpm_per_key" class="w-full px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div></div>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 space-y-3">
+                <h3 class="text-sm font-semibold text-[var(--text)]">重试与故障转移</h3>
+                <div class="flex items-center justify-between"><span class="text-xs text-[var(--muted)]">最大重试次数</span><input type="number" x-model.number="policyForm.max_retries" class="w-20 px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"></div>
+                <div class="flex items-center justify-between"><span class="text-xs text-[var(--muted)]">启用故障转移</span><button @click="policyForm.fallback_enabled=!policyForm.fallback_enabled" :class="policyForm.fallback_enabled?'bg-accent-600 text-white':'border border-[var(--border)] text-[var(--muted)]'" class="px-3 py-1 text-xs rounded-md" x-text="policyForm.fallback_enabled?'已启用':'已停用'"></button></div>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 flex items-center justify-between">
+                <div><h3 class="text-sm font-semibold text-[var(--text)]">缓存</h3><p class="text-xs text-[var(--muted)] mt-0.5">对相同 prompt 命中缓存降本</p></div>
+                <button @click="policyForm.cache_enabled=!policyForm.cache_enabled" :class="policyForm.cache_enabled?'bg-accent-600 text-white':'border border-[var(--border)] text-[var(--muted)]'" class="px-3 py-1.5 text-xs rounded-md" x-text="policyForm.cache_enabled?'已开启':'已关闭'"></button>
+              </div>
+              <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 flex items-center justify-between">
+                <div><h3 class="text-sm font-semibold text-[var(--text)]">成本控制</h3><p class="text-xs text-[var(--muted)] mt-0.5">消耗超阈值告警</p></div>
+                <input type="number" x-model.number="policyForm.cost_alert" class="w-24 px-2 py-1 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+              </div>
+            </div>
+            <button @click="savePolicy()" class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">保存策略</button>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden mt-5">
+              <div class="px-4 py-3 border-b border-[var(--border)] text-sm font-semibold text-[var(--text)]">路由规则</div>
+              <table class="w-full text-sm">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">名称</th><th class="text-left">匹配</th><th class="text-left">目标</th><th class="text-right px-4">优先级</th></tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="r in policyRules" :key="r.id"><tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4 font-medium" x-text="r.name"></td><td x-text="r.match"></td><td x-text="r.target"></td><td class="text-right px-4 font-mono" x-text="r.priority"></td></tr></template>
+                </tbody>
+              </table>
+              <p x-show="policyRules.length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无规则 · 后端接口待实现（前端已就绪）</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 组织与 RBAC (sa-org) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-org' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">组织与 RBAC</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">多租户组织隔离、访问组与细粒度权限（后端接口待实现）</p>
+            <div class="flex gap-2 mb-4">
+              <button @click="saOrgTab='orgs'" :class="saOrgTab==='orgs' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">组织</button>
+              <button @click="saOrgTab='groups'" :class="saOrgTab==='groups' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">访问组</button>
+              <button @click="saOrgTab='roles'" :class="saOrgTab==='roles' ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md">RBAC 角色</button>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] overflow-hidden">
+              <table class="w-full text-sm">
+                <thead><tr class="bg-[var(--bg)] text-[11px] text-[var(--muted)] uppercase tracking-wider"><th class="text-left py-2 px-4">名称</th><th class="text-left">标识</th><th class="text-left">描述</th><th class="text-right px-4">成员</th></tr></thead>
+                <tbody class="divide-y divide-[var(--border)]">
+                  <template x-for="row in (saOrgTab==='orgs'?orgs:saOrgTab==='groups'?accessGroups:rbacRoles)" :key="row.id">
+                    <tr class="hover:bg-[var(--bg)]"><td class="py-2 px-4 font-medium" x-text="row.name"></td><td class="font-mono text-xs" x-text="row.slug || row.id"></td><td class="text-[var(--muted)]" x-text="row.description"></td><td class="text-right px-4 font-mono" x-text="row.members ?? 0"></td></tr>
+                  </template>
+                </tbody>
+              </table>
+              <p x-show="(saOrgTab==='orgs'?orgs:saOrgTab==='groups'?accessGroups:rbacRoles).length === 0" class="py-8 text-center text-sm text-[var(--muted-2)]">暂无数据 · 后端接口待实现（前端已就绪）</p>
+            </div>
+          </div>
+
+          <!-- ==================================================================
+               TAB: SSO / OAuth (sa-sso) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-sso' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">SSO / OAuth</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">GitHub / Discord / OIDC 等单点登录与 MFA 策略（后端接口待实现）</p>
+            <div class="space-y-3">
+              <template x-for="p in ssoProviders" :key="p.id">
+                <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4">
+                  <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm font-medium text-[var(--text)]" x-text="p.name"></span>
+                    <button @click="p.enabled=!p.enabled" :class="p.enabled ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-2.5 py-1 rounded-md" x-text="p.enabled ? '已启用' : '已停用'"></button>
+                  </div>
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <input x-model="p.client_id" placeholder="Client ID" class="px-2 py-1.5 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                    <input x-model="p.client_secret" type="password" placeholder="Client Secret" class="px-2 py-1.5 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                    <input x-show="p.id==='oidc'" x-model="p.issuer" placeholder="Issuer URL" class="px-2 py-1.5 text-xs rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                  </div>
+                </div>
+              </template>
+            </div>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 mt-4 flex items-center justify-between">
+              <div><h3 class="text-sm font-semibold text-[var(--text)]">MFA 策略</h3><p class="text-xs text-[var(--muted)] mt-0.5">强制 / 可选 / 关闭多因素认证</p></div>
+              <select x-model="mfaPolicy" class="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"><option value="optional">可选</option><option value="required">强制</option><option value="off">关闭</option></select>
+            </div>
+            <button @click="saveSSO()" class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">保存 SSO 配置</button>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 系统设置 (sa-settings) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-settings' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">系统设置</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">语言、主题、时区、货币、通知渠道与日志系统对接（后端接口待实现）</p>
+            <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div><label class="block text-xs text-[var(--muted)] mb-1">语言</label><select x-model="sysSettings.language" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"><option value="zh-CN">简体中文</option><option value="en">English</option></select></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">时区</label><select x-model="sysSettings.timezone" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"><option value="Asia/Shanghai">Asia/Shanghai</option><option value="UTC">UTC</option></select></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">货币</label><select x-model="sysSettings.currency" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"><option value="CNY">CNY ¥</option><option value="USD">USD $</option></select></div>
+              <div><label class="block text-xs text-[var(--muted)] mb-1">日志后端</label><select x-model="sysSettings.log_backend" class="w-full px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus"><option value="local">本地</option><option value="loki">Loki</option><option value="es">Elasticsearch</option></select></div>
+              <div class="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input x-model="sysSettings.notify_email" placeholder="通知邮箱" class="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <input x-model="sysSettings.notify_dingtalk" placeholder="钉钉 Webhook" class="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <input x-model="sysSettings.notify_feishu" placeholder="飞书 Webhook" class="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+                <input x-model="sysSettings.notify_webhook" placeholder="通用 Webhook" class="px-2 py-1.5 text-sm rounded-md border border-[var(--border)] bg-[var(--bg)] text-[var(--text)] input-focus">
+              </div>
+            </div>
+            <button @click="saveSysSettings()" class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">保存设置</button>
+          </div>
+
+          <!-- ==================================================================
+               TAB: 实验功能 (sa-lab) — 超级管理员级, 后端待实现
+               ================================================================== -->
+          <div x-show="currentTab === 'sa-lab' && !loading">
+            <h2 class="text-lg font-bold text-[var(--text)] mb-0.5">实验功能</h2>
+            <p class="text-sm text-[var(--muted)] mb-5">Beta 能力开关（后端接口待实现）</p>
+            <div class="space-y-2">
+              <template x-for="f in labFlags" :key="f.id">
+                <div class="bg-[var(--surface)] rounded-md border border-[var(--border)] p-4 flex items-center justify-between">
+                  <div><div class="text-sm font-medium text-[var(--text)]" x-text="f.name"></div><div class="text-xs text-[var(--muted)]" x-text="f.desc"></div></div>
+                  <button @click="f.enabled=!f.enabled" :class="f.enabled ? 'bg-accent-600 text-white' : 'border border-[var(--border)] text-[var(--muted)]'" class="text-xs px-3 py-1.5 rounded-md" x-text="f.enabled ? '已开启' : '已关闭'"></button>
+                </div>
+              </template>
+            </div>
+            <button @click="saveLabFlags()" class="mt-4 px-4 py-2 text-sm font-medium text-white bg-accent-600 rounded-md hover:bg-accent-700">保存</button>
+          </div>
+
+          <!-- ==================================================================
+               统一「规划中」占位面板
+               当 currentTab 属于 placeholderTabs 时显示，绑定 currentPlaceholder
+               ================================================================== -->
+          <div x-show="isPlaceholder(currentTab) && !loading">
+            <div class="max-w-lg mx-auto text-center py-16">
+              <div class="w-14 h-14 mx-auto mb-5 rounded-full bg-[var(--row-alt)] flex items-center justify-center">
+                <svg class="w-7 h-7 text-[var(--muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <span class="inline-flex items-center text-[11px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-medium mb-3">规划中</span>
+              <h2 class="text-lg font-bold text-[var(--text)] mb-2" x-text="currentPlaceholder.title"></h2>
+              <p class="text-sm text-[var(--muted)] leading-relaxed" x-text="currentPlaceholder.desc"></p>
+            </div>
+          </div>
+
         </div>
       </main>
     </div>
@@ -987,6 +1624,7 @@ experimental_bearer_token = "你的API_Key"</code></pre>
         // token / role: 从 localStorage 读取，用于认证和权限判断
         token: localStorage.getItem('token') || '',
         role:  localStorage.getItem('role')  || '',
+        username: localStorage.getItem('username') || '',
 
         // theme: 当前明暗主题，持久化在 localStorage，默认亮色
         theme: localStorage.getItem('theme') || 'light',
@@ -1025,12 +1663,81 @@ experimental_bearer_token = "你的API_Key"</code></pre>
         // ---- 创建用户表单 ----
         adminForm: { username: '', password: '', balance: 0 },
 
+        // ---- 团队管理 (admin) ----
+        teams: [],            // 团队列表 (含 member_count)
+        teamForm: { name: '', description: '', month_budget: 0 },
+
+        // ---- 兑换码 (admin 生成 / 用户兑换) ----
+        codes: [],            // 兑换码列表 (admin)
+        codeGen: { count: 5, value: 100 },   // 批量生成表单
+        redeemInput: '',      // 用户兑换充值输入框
+
+        // ---- 角色管理 (superadmin) ----
+        // 复用 allUsers 列表，roleTarget 记录正在改角色的用户下拉选择值
+        roleTarget: {},       // { [userId]: 'user'|'admin'|'superadmin' }
+
+        // ---- 系统信息 (superadmin) ----
+        systemInfo: null,     // /api/superadmin/system 返回
+
         // ---- Toast 通知队列 ----
         toasts: [],
 
         // ---- 模型参考表搜索 ----
         modelSearch: '',      // 搜索关键词，实时过滤模型参考表
         guideLang: 'curl',     // 使用指南代码语言切换 (curl/python/node)
+
+        // ---- Playground (在线测试, 真实可用) ----
+        pgModel: '',           // 选中的模型名
+        pgKey: '',             // 使用的 API Key (从 userKeys 选)
+        pgMessages: [],        // 对话消息列表 {role, content}
+        pgInput: '',           // 输入框内容
+        pgStreaming: false,    // 是否正在请求
+        pgTemp: 0.7, pgMaxTokens: 1024, pgSystem: '',  // 参数
+
+        // ---- 个人设置 (settings, 后端部分待实现) ----
+        setForm: { old_password: '', new_password: '', email: '' },
+        twoFAEnabled: false, passkeyList: [], linkedAccounts: [],
+
+        // ---- 调用日志 + 操作审计 (admin-logs, 后端待实现) ----
+        callLogs: [], auditLogs: [],
+
+        // ---- 护栏监控 (admin-guardrail, 后端待实现) ----
+        guardrails: [],
+
+        // ---- 订阅计划 (admin-subscriptions, 后端待实现) ----
+        plans: [], planForm: { name: '', price: 0, quota: 0, duration_days: 30, description: '' },
+
+        // ---- 智能体 / MCP / 技能 (sa-agents, 后端待实现) ----
+        agents: [], mcpServers: [], skills: [], tools: [], saAgentsTab: 'agents',
+
+        // ---- 护栏与策略 (sa-policies, 后端待实现) ----
+        policyForm: { rpm_per_key: 60, tpm_per_key: 60000, max_retries: 2, cache_enabled: true, cost_alert: 100, fallback_enabled: true },
+        policyRules: [],
+
+        // ---- 组织与 RBAC (sa-org, 后端待实现) ----
+        orgs: [], accessGroups: [], rbacRoles: [], saOrgTab: 'orgs',
+
+        // ---- SSO / OAuth (sa-sso, 后端待实现) ----
+        ssoProviders: [
+          { id: 'github',   name: 'GitHub',   enabled: false, client_id: '', client_secret: '' },
+          { id: 'discord',  name: 'Discord',  enabled: false, client_id: '', client_secret: '' },
+          { id: 'oidc',     name: 'OIDC',     enabled: false, client_id: '', client_secret: '', issuer: '' },
+          { id: 'linuxdo',  name: 'LinuxDO',  enabled: false, client_id: '', client_secret: '' },
+          { id: 'telegram', name: 'Telegram', enabled: false, client_id: '', client_secret: '' },
+        ],
+        mfaPolicy: 'optional',
+
+        // ---- 系统设置 (sa-settings, 后端待实现) ----
+        sysSettings: { language: 'zh-CN', theme: 'light', timezone: 'Asia/Shanghai', currency: 'CNY',
+                       notify_email: '', notify_dingtalk: '', notify_feishu: '', notify_webhook: '', log_backend: 'local' },
+
+        // ---- 实验功能 (sa-lab, 后端待实现) ----
+        labFlags: [
+          { id: 'adaptive_router', name: '自适应路由', desc: '根据延迟/成本自动选择最优上游', enabled: false },
+          { id: 'mcp_gateway',     name: 'MCP 网关',   desc: '对外暴露 Model Context Protocol 端点', enabled: false },
+          { id: 'token_cache',     name: 'Token 缓存', desc: '对相同 prompt 命中缓存降本', enabled: false },
+          { id: 'anthropic_skill', name: 'Anthropic 技能', desc: '支持 skills 工具调用协议', enabled: false },
+        ],
 
         // ====== 2. 导航栏 SVG 图标 (统一大小 14x14) ======
         iconDash: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7m-9 2v8m4-8v8"/></svg>',
@@ -1042,28 +1749,116 @@ experimental_bearer_token = "你的API_Key"</code></pre>
         iconChart: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>',
         iconGuide: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>',
         iconPricing: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        iconTeam: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-1.13a4 4 0 10-4-4 4 4 0 004 4zm6 0a3 3 0 10-3-3"/></svg>',
+        iconGift: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13a4 4 0 10-4-4c0 1.657 1.79 4 4 4zm0 0a4 4 0 114-4c0 1.657-1.79 4-4 4zM5 8h14a1 1 0 011 1v3H4V9a1 1 0 011-1zm-1 4h16v8a1 1 0 01-1 1H5a1 1 0 01-1-1v-8z"/></svg>',
+        iconBudget: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18h18M9 17V9m4 8V5m4 12v-6"/></svg>',
+        iconShield: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>',
+        iconServer: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>',
+        iconAgent: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>',
+        iconCog: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>',
+        iconBeaker: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/></svg>',
+        iconPlay: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.104A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.104a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>',
+        iconShield2: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
+        iconFlag: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3v18M3 7h13l-2 4 2 4H3"/></svg>',
+        iconBuilding: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21h18M5 21V5a2 2 0 012-2h6a2 2 0 012 2v16M19 21V11a1 1 0 00-1-1h-2"/></svg>',
+        iconPlug: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3M5 11h14v4a7 7 0 01-14 0v-4zM12 18v3"/></svg>',
+        iconLayers: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2l9 5-9 5-9-5 9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>',
+        iconBell: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6 6 0 10-12 0v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>',
+        iconRoute: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 100-4 2 2 0 000 4zm14 0a2 2 0 100 4 2 2 0 000-4z"/></svg>',
+        iconRefresh: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h5M20 20v-5h-5M4 9a8 8 0 0114-3M20 15a8 8 0 01-14 3"/></svg>',
+        iconCache: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8M9 12h6"/></svg>',
+        iconKey2: '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a4 4 0 11-8 0 4 4 0 018 0zM11 11l8 8M17 17l2-2"/></svg>',
 
         // ====== 3. 导航 tabs (getter 属性，动态生成) ======
-        // 普通用户 tabs: 概览 / API Keys / 交易记录 / 使用记录
+        // 权限递进：普通用户 ⊂ 管理员 ⊂ 超级管理员
+        //   userTabs        → 所有登录用户可见
+        //   adminTabs       → admin / superadmin 可见
+        //   superadminTabs  → 仅 superadmin 可见
+        // 标 ⧗ 的为"规划中"占位页（isPlaceholder 判定），点开显示统一占位面板。
+
+        // 普通用户 tabs
         get userTabs() {
           return [
             { id: 'dashboard',    label: '概览',     icon: this.iconDash },
+            { id: 'model-plaza',  label: '模型广场',  icon: this.iconChart },
+            { id: 'playground',   label: 'Playground', icon: this.iconPlay },
             { id: 'keys',         label: 'API Keys', icon: this.iconKey },
-            { id: 'transactions', label: '交易记录',  icon: this.iconTx },
             { id: 'usage',        label: '使用记录',  icon: this.iconUsage },
+            { id: 'transactions', label: '交易记录',  icon: this.iconTx },
+            { id: 'redeem',       label: '兑换充值',  icon: this.iconGift },
             { id: 'admin-dashboard-viz', label: '数据看板', icon: this.iconChart },
             { id: 'guide',               label: '使用指南', icon: this.iconGuide },
+            { id: 'settings',     label: '个人设置',  icon: this.iconCog },
           ];
         },
 
-        // 管理员 tabs: 仅 role==='admin' 时返回有内容的数组
+        // 管理员 tabs: admin / superadmin 可见
         get adminTabs() {
-          if (this.role !== 'admin') return [];
+          if (this.role !== 'admin' && this.role !== 'superadmin') return [];
           return [
-            { id: 'admin-users',    label: '用户管理', icon: this.iconUsers },
-            { id: 'admin-upstream', label: '上游 Key', icon: this.iconUpstream },
-            { id: 'admin-pricing',  label: '模型定价', icon: this.iconPricing },
+            { id: 'admin-users',      label: '用户管理', icon: this.iconUsers },
+            { id: 'admin-teams',      label: '团队管理', icon: this.iconTeam },
+            { id: 'admin-upstream',   label: '上游渠道', icon: this.iconUpstream },
+            { id: 'admin-pricing',    label: '模型定价', icon: this.iconPricing },
+            { id: 'admin-redemption', label: '兑换码',   icon: this.iconGift },
+            { id: 'admin-budgets',    label: '预算管理', icon: this.iconBudget },
+            { id: 'admin-subscriptions', label: '订阅计划', icon: this.iconGift },
+            { id: 'admin-logs',       label: '调用日志', icon: this.iconUsage },
+            { id: 'admin-guardrail',  label: '护栏监控', icon: this.iconShield2 },
           ];
+        },
+
+        // 超级管理员 tabs: 仅 superadmin 可见
+        get superadminTabs() {
+          if (this.role !== 'superadmin') return [];
+          return [
+            { id: 'sa-roles',    label: '角色管理', icon: this.iconUsers },
+            { id: 'sa-system',   label: '系统信息', icon: this.iconServer },
+            { id: 'sa-agents',   label: '智能体/MCP/技能', icon: this.iconLayers },
+            { id: 'sa-policies', label: '护栏与策略', icon: this.iconShield2 },
+            { id: 'sa-org',      label: '组织与RBAC', icon: this.iconBuilding },
+            { id: 'sa-sso',      label: 'SSO / OAuth', icon: this.iconPlug },
+            { id: 'sa-settings', label: '系统设置', icon: this.iconCog },
+            { id: 'sa-lab',      label: '实验功能', icon: this.iconFlag },
+          ];
+        },
+
+        // 规划中占位页集合：点开显示统一"规划中"面板
+        placeholderTabs: {},
+        isPlaceholder(id) { return Object.prototype.hasOwnProperty.call(this.placeholderTabs, id); },
+
+        // 是否具备管理员能力 (admin 或 superadmin)
+        get isAdmin() { return this.role === 'admin' || this.role === 'superadmin'; },
+        // 是否超级管理员
+        get isSuper() { return this.role === 'superadmin'; },
+
+        // 当前占位页信息 (供占位面板绑定标题/描述)
+        get currentPlaceholder() { return this.placeholderTabs[this.currentTab] || { title: '规划中', desc: '该功能正在规划中，敬请期待。' }; },
+
+        // 角色中文名 + 徽章配色
+        roleLabel(r) { return { user: '普通用户', admin: '管理员', superadmin: '超级管理员' }[r] || '普通用户'; },
+
+        // ====== 导航切换：按 tab 触发对应数据加载 ======
+        // 保留原逻辑：dashboard→refreshStats、admin-dashboard-viz→loadStatsAndRender
+        // 新增：团队/兑换码/系统信息 等按需加载；占位页直接切换
+        onTab(id) {
+          this.currentTab = id;
+          if (typeof window !== 'undefined' && window.innerWidth < 768) this.sidebarOpen = false;
+          switch (id) {
+            case 'dashboard':           this.refreshStats(); break;
+            case 'admin-dashboard-viz': this.loadStatsAndRender(); break;
+            case 'admin-teams':         this.loadTeams(); break;
+            case 'admin-redemption':    this.loadCodes(); break;
+            case 'sa-roles':            if (!this.allUsers.length) this.loadData(); break;
+            case 'sa-system':           this.loadSystemInfo(); break;
+            case 'playground':          if (!this.pgModel && this.modelProviders.length) this.pgModel = this.modelProviders[0].name; break;
+            case 'admin-logs':          this.loadCallLogs(); this.loadAuditLogs(); break;
+            case 'admin-guardrail':     this.loadGuardrails(); break;
+            case 'admin-subscriptions': this.loadPlans(); break;
+            case 'sa-agents':           this.loadAgents(); break;
+            case 'sa-policies':         this.loadPolicyRules(); break;
+            case 'sa-org':              this.loadOrg(); break;
+          }
         },
 
         // ==================================================================
@@ -1167,7 +1962,7 @@ experimental_bearer_token = "你的API_Key"</code></pre>
         // 普通用户: 从 usageRecords 本地聚合个人数据
         async loadStatsAndRender() {
           await this.loadData();
-          if (this.role === 'admin') {
+          if (this.isAdmin) {
             try {
               const res = await fetch('/api/admin/stats', {
                 headers: { 'Authorization': 'Bearer ' + this.token }
@@ -1262,7 +2057,7 @@ experimental_bearer_token = "你的API_Key"</code></pre>
 
           // ---- 折线图: 每日 Token 消耗趋势 ----
           // admin 优先用后端按天聚合(dailyStats，支持时间范围)；普通用户用本地 usageRecords 聚合
-          const daily = (this.role === 'admin' && this.dailyStats && this.dailyStats.length)
+          const daily = (this.isAdmin && this.dailyStats && this.dailyStats.length)
             ? { labels: this.dailyStats.map(d => d.date.slice(5)), tokens: this.dailyStats.map(d => d.tokens), cost: this.dailyStats.map(d => d.cost), requests: this.dailyStats.map(d => d.requests) }
             : this.computeDailyTrend();
           const lineCtx = document.getElementById('chart-daily-trend');
@@ -1388,14 +2183,19 @@ experimental_bearer_token = "你的API_Key"</code></pre>
               .filter(t => t.type === 'deduct' && t.created_at && t.created_at.startsWith(today))
               .reduce((s, t) => s + Math.abs(t.amount), 0);
 
-            // 管理员额外加载用户/上游Key/定价数据
-            if (this.role === 'admin') {
+            // 管理员额外加载用户/上游Key/定价数据 (admin 与 superadmin 均加载)
+            if (this.isAdmin) {
               const us = await (await fetch('/api/admin/users', { headers })).json();
               this.allUsers = us.users || [];
               const uk = await (await fetch('/api/admin/upstream-keys', { headers })).json();
               this.upstreamKeys = uk.keys || [];
               const pr = await (await fetch('/api/admin/pricing', { headers })).json();
               this.pricingList = pr.pricing || [];
+              // 团队列表 (团队管理 / 创建用户时可选团队)
+              try {
+                const tm = await (await fetch('/api/admin/teams', { headers })).json();
+                this.teams = tm.teams || [];
+              } catch (e) { /* ignore */ }
               // 按天聚合(时间范围筛选)：拉取 rangeDays 窗口的数据给折线图
               const ds = await (await fetch('/api/admin/stats/daily?days=' + this.rangeDays, { headers })).json();
               this.dailyStats = ds.data || [];
@@ -1410,7 +2210,7 @@ experimental_bearer_token = "你的API_Key"</code></pre>
         // 切换看板时间范围(7/14/30 天)：仅 admin，重新拉取按天数据并重绘图表
         async setRange(d) {
           this.rangeDays = d;
-          if (this.role === 'admin') {
+          if (this.isAdmin) {
             const headers = { 'Authorization': 'Bearer ' + this.token };
             try {
               const ds = await (await fetch('/api/admin/stats/daily?days=' + d, { headers })).json();
@@ -1461,6 +2261,102 @@ console.log(response.choices[0].message.content);`;
 
                 // 剪贴板复制 (用于复制 API Key)
         copyText(text) { navigator.clipboard.writeText(text); this.toast('success', '已复制到剪贴板'); },
+
+        // ====== 团队管理 (admin) ======
+        async loadTeams() {
+          const headers = { 'Authorization': 'Bearer ' + this.token };
+          try { const r = await (await fetch('/api/admin/teams', { headers })).json(); this.teams = r.teams || []; }
+          catch (e) { console.error(e); }
+        },
+        async createTeam() {
+          if (!this.teamForm.name) { this.toast('error', '请填写团队名称'); return; }
+          const res = await fetch('/api/admin/teams', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: this.teamForm.name, description: this.teamForm.description, month_budget: Number(this.teamForm.month_budget) || 0 }),
+          });
+          const data = await res.json();
+          if (res.ok) { this.teamForm = { name: '', description: '', month_budget: 0 }; this.loadTeams(); this.toast('success', '团队已创建'); }
+          else this.toast('error', data.detail || '创建失败');
+        },
+        async deleteTeam(id) {
+          if (!confirm('确定删除该团队？成员将被移出团队（不删除用户）。')) return;
+          const res = await fetch('/api/admin/teams/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (res.ok) { this.loadTeams(); this.toast('success', '团队已删除'); }
+          else this.toast('error', '删除失败');
+        },
+
+        // ====== 兑换码 (admin 生成/删除) ======
+        async loadCodes() {
+          const headers = { 'Authorization': 'Bearer ' + this.token };
+          try { const r = await (await fetch('/api/admin/redemption', { headers })).json(); this.codes = r.codes || []; }
+          catch (e) { console.error(e); }
+        },
+        async generateCodes() {
+          const count = Number(this.codeGen.count) || 0;
+          const value = Number(this.codeGen.value) || 0;
+          if (count < 1 || value <= 0) { this.toast('error', '请填写有效的数量与面额'); return; }
+          const res = await fetch('/api/admin/redemption', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ count, value }),
+          });
+          const data = await res.json();
+          if (res.ok) { this.loadCodes(); this.toast('success', '已生成 ' + count + ' 个兑换码'); }
+          else this.toast('error', data.detail || '生成失败');
+        },
+        async deleteCode(id) {
+          if (!confirm('确定删除该兑换码？')) return;
+          const res = await fetch('/api/admin/redemption/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + this.token } });
+          if (res.ok) { this.loadCodes(); this.toast('success', '兑换码已删除'); }
+          else this.toast('error', '删除失败');
+        },
+
+        // ====== 兑换充值 (普通用户) ======
+        async redeemCode() {
+          const code = (this.redeemInput || '').trim();
+          if (!code) { this.toast('error', '请输入兑换码'); return; }
+          const res = await fetch('/api/redeem', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code }),
+          });
+          const data = await res.json();
+          if (res.ok) { this.redeemInput = ''; this.loadData(); this.toast('success', '兑换成功，到账 ' + (data.value ?? '') + ' 积分'); }
+          else this.toast('error', data.detail || '兑换失败');
+        },
+
+        // ====== 角色管理 (superadmin) ======
+        async changeRole(userId) {
+          const newRole = this.roleTarget[userId];
+          if (!newRole) { this.toast('error', '请选择角色'); return; }
+          const res = await fetch('/api/superadmin/users/' + userId + '/role', {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: newRole }),
+          });
+          const data = await res.json();
+          if (res.ok) { this.loadData(); this.toast('success', '角色已更新为「' + this.roleLabel(newRole) + '」'); }
+          else this.toast('error', data.detail || '更新失败');
+        },
+
+        // ====== 系统信息 (superadmin) ======
+        async loadSystemInfo() {
+          const headers = { 'Authorization': 'Bearer ' + this.token };
+          try { this.systemInfo = await (await fetch('/api/superadmin/system', { headers })).json(); }
+          catch (e) { console.error(e); this.toast('error', '获取系统信息失败'); }
+        },
+        // 把秒数格式化为 Xd Xh Xm Xs
+        fmtUptime(sec) {
+          sec = Number(sec) || 0;
+          const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+          const parts = [];
+          if (d) parts.push(d + 'd');
+          if (h) parts.push(h + 'h');
+          if (m) parts.push(m + 'm');
+          parts.push(s + 's');
+          return parts.join(' ');
+        },
 
         // ====== 8. CRUD: API Keys ======
         // 创建 Key: POST /api/keys { key_name }
@@ -1577,8 +2473,158 @@ console.log(response.choices[0].message.content);`;
           this.theme = this.theme === 'dark' ? 'light' : 'dark';
           localStorage.setItem('theme', this.theme);
         },
+
+        // ====== 13. 通用后端 stub 调用 ======
+        // 所有"后端待实现"的功能统一走这里：成功则 toast 成功，失败则提示"后端接口待实现"。
+        // 返回解析后的 JSON；请求失败 / 404 / 500 时返回 null，调用方据此保留空列表。
+        async apiStub(method, path, body, okMsg) {
+          try {
+            const res = await fetch(path, {
+              method,
+              headers: { 'Authorization': 'Bearer ' + this.token, 'Content-Type': 'application/json' },
+              body: body ? JSON.stringify(body) : undefined,
+            });
+            if (res.ok) {
+              if (okMsg) this.toast('success', okMsg);
+              try { return await res.json(); } catch (e) { return {}; }
+            }
+            const d = await res.json().catch(() => ({}));
+            this.toast('error', (d.detail || '操作失败') + '（后端接口待实现）');
+          } catch (e) { this.toast('error', '请求失败：后端接口待实现'); }
+          return null;
+        },
+
+        // ====== 14. Playground 操练场 (真实可用, 直连 /v1/chat/completions) ======
+        pgReset() { this.pgMessages = []; },
+        async pgSend() {
+          const text = (this.pgInput || '').trim();
+          if (!text || !this.pgModel || !this.pgKey || this.pgStreaming) return;
+          const msgs = [];
+          if (this.pgSystem) msgs.push({ role: 'system', content: this.pgSystem });
+          this.pgMessages.forEach(m => msgs.push({ role: m.role, content: m.content }));
+          msgs.push({ role: 'user', content: text });
+          this.pgMessages.push({ role: 'user', content: text });
+          this.pgMessages.push({ role: 'assistant', content: '' });
+          this.pgInput = '';
+          this.pgStreaming = true;
+          const idx = this.pgMessages.length - 1;
+          try {
+            const res = await fetch('/v1/chat/completions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + this.pgKey },
+              body: JSON.stringify({ model: this.pgModel, messages: msgs, temperature: this.pgTemp, max_tokens: this.pgMaxTokens, stream: true }),
+            });
+            if (!res.ok) { const err = await res.text(); this.pgMessages[idx].content = '错误：' + err.slice(0, 300); this.toast('error', '请求失败'); return; }
+            const reader = res.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split('\n');
+              buf = lines.pop();
+              for (const line of lines) {
+                const t = line.trim();
+                if (!t.startsWith('data:')) continue;
+                const data = t.slice(5).trim();
+                if (data === '[DONE]') continue;
+                try {
+                  const j = JSON.parse(data);
+                  const delta = j.choices && j.choices[0] && j.choices[0].delta ? (j.choices[0].delta.content || '') : '';
+                  if (delta) {
+                    this.pgMessages[idx].content += delta;
+                    this.$nextTick(() => { const el = document.getElementById('pg-scroll'); if (el) el.scrollTop = el.scrollHeight; });
+                  }
+                } catch (e) {}
+              }
+            }
+          } catch (e) { this.pgMessages[idx].content = '请求异常：' + e.message; this.toast('error', '网络错误'); }
+          finally { this.pgStreaming = false; }
+        },
+
+        // ====== 15. 个人设置 ======
+        async savePassword() {
+          if (!this.setForm.old_password || !this.setForm.new_password) { this.toast('error', '请填写完整'); return; }
+          const r = await this.apiStub('POST', '/api/auth/change-password', { old_password: this.setForm.old_password, new_password: this.setForm.new_password }, '密码已更新');
+          if (r) this.setForm = { old_password: '', new_password: '', email: this.setForm.email };
+        },
+        async saveEmail() {
+          if (!this.setForm.email) { this.toast('error', '请填写邮箱'); return; }
+          await this.apiStub('POST', '/api/auth/bind-email', { email: this.setForm.email }, '邮箱已保存');
+        },
+        async toggle2FA() {
+          this.twoFAEnabled = !this.twoFAEnabled;
+          await this.apiStub('POST', '/api/auth/2fa', { enabled: this.twoFAEnabled }, this.twoFAEnabled ? '2FA 已开启' : '2FA 已关闭');
+        },
+        async addPasskey() { await this.apiStub('POST', '/api/auth/passkey', {}, 'Passkey 已添加（后端待实现）'); },
+
+        // ====== 16. 调用日志 + 操作审计 ======
+        async loadCallLogs() { const r = await this.apiStub('GET', '/api/admin/logs'); this.callLogs = (r && r.logs) || []; },
+        async loadAuditLogs() { const r = await this.apiStub('GET', '/api/admin/audit'); this.auditLogs = (r && r.logs) || []; },
+
+        // ====== 17. 护栏监控 ======
+        async loadGuardrails() { const r = await this.apiStub('GET', '/api/admin/guardrails'); this.guardrails = (r && r.guardrails) || []; },
+        async toggleGuardrail(id) { await this.apiStub('POST', '/api/admin/guardrails/' + id + '/toggle', {}, '已更新'); this.loadGuardrails(); },
+
+        // ====== 18. 订阅计划 ======
+        async loadPlans() { const r = await this.apiStub('GET', '/api/admin/plans'); this.plans = (r && r.plans) || []; },
+        async createPlan() {
+          if (!this.planForm.name) { this.toast('error', '请填写套餐名'); return; }
+          const r = await this.apiStub('POST', '/api/admin/plans', this.planForm, '套餐已创建');
+          if (r) { this.planForm = { name: '', price: 0, quota: 0, duration_days: 30, description: '' }; this.loadPlans(); }
+        },
+        async deletePlan(id) { await this.apiStub('DELETE', '/api/admin/plans/' + id); this.loadPlans(); },
+
+        // ====== 19. 智能体 / MCP / 技能 / 工具 ======
+        async loadAgents() {
+          this.agents = (await this.apiStub('GET', '/api/superadmin/agents') || {}).agents || [];
+          this.mcpServers = (await this.apiStub('GET', '/api/superadmin/mcp') || {}).servers || [];
+          this.skills = (await this.apiStub('GET', '/api/superadmin/skills') || {}).skills || [];
+          this.tools = (await this.apiStub('GET', '/api/superadmin/tools') || {}).tools || [];
+        },
+
+        // ====== 20. 护栏与策略 ======
+        async savePolicy() { await this.apiStub('POST', '/api/superadmin/policies', this.policyForm, '策略已保存'); },
+        async loadPolicyRules() { const r = await this.apiStub('GET', '/api/superadmin/policy-rules'); this.policyRules = (r && r.rules) || []; },
+
+        // ====== 21. 组织与 RBAC ======
+        async loadOrg() {
+          this.orgs = (await this.apiStub('GET', '/api/superadmin/orgs') || {}).orgs || [];
+          this.accessGroups = (await this.apiStub('GET', '/api/superadmin/access-groups') || {}).groups || [];
+          this.rbacRoles = (await this.apiStub('GET', '/api/superadmin/rbac-roles') || {}).roles || [];
+        },
+
+        // ====== 22. SSO / OAuth ======
+        async saveSSO() {
+          const providers = this.ssoProviders.map(p => ({ id: p.id, enabled: p.enabled, client_id: p.client_id, client_secret: p.client_secret, issuer: p.issuer }));
+          await this.apiStub('POST', '/api/superadmin/sso', { providers, mfa_policy: this.mfaPolicy }, 'SSO 配置已保存');
+        },
+
+        // ====== 23. 系统设置 ======
+        async saveSysSettings() { await this.apiStub('POST', '/api/superadmin/settings', this.sysSettings, '系统设置已保存'); },
+
+        // ====== 24. 实验功能 ======
+        async saveLabFlags() {
+          const flags = this.labFlags.map(f => ({ id: f.id, enabled: f.enabled }));
+          await this.apiStub('POST', '/api/superadmin/lab-flags', { flags }, '实验功能已保存');
+        },
       };
     }
+  </script>
+  <script>
+    // 安全网：若 2.5s 后 Alpine 仍未初始化（body 仍带 x-cloak），说明本地 JS 没加载成功，
+    // 绝大多数情况是浏览器缓存了旧版页面（旧版从外部 CDN 加载 Alpine，被网络拦截）。
+    // 不再静默白屏，直接提示用户强制刷新。
+    setTimeout(function () {
+      if (document.body && document.body.hasAttribute('x-cloak')) {
+        document.body.removeAttribute('x-cloak');
+        var b = document.createElement('div');
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;padding:12px 16px;font:14px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;text-align:center';
+        b.textContent = '⚠️ 页面脚本未加载（多为浏览器缓存了旧版）。请按 Cmd+Shift+R 强制刷新，或开无痕窗口访问。';
+        document.body.appendChild(b);
+      }
+    }, 2500);
   </script>
 </body>
 </html>

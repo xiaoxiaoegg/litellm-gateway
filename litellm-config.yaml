@@ -41,6 +41,192 @@ model_list:
       api_key: os.environ/DASHSCOPE_API_KEY
       api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
 
+  # 火山方舟 Coding Plan: 必须走 /api/coding/v3 专用通道才消耗套餐额度, 否则按量计费
+  - model_name: ark-code-latest
+    litellm_params:
+      model: volcengine/ark-code-latest
+      api_key: os.environ/VOLCENGINE_API_KEY
+      api_base: https://ark.cn-beijing.volces.com/api/coding/v3
+
+  # 给 Claude Code 用的中性格名(不带 ark- 前缀): Claude Code 会把 ark- 前缀识别为方舟原生模型
+  # 并绕过 ANTHROPIC_BASE_URL 直连方舟 /api/coding/v1/messages, 导致鉴权失败(401)。用此别名走网关即可。
+  - model_name: huoshan-code
+    litellm_params:
+      model: volcengine/ark-code-latest
+      api_key: os.environ/VOLCENGINE_API_KEY
+      api_base: https://ark.cn-beijing.volces.com/api/coding/v3
+
+  # ===================== 以下为 2026-07-24 新增模型 =====================
+
+  # --- DeepSeek 全系 (DEEPSEEK_API_KEY) ---
+  - model_name: deepseek-reasoner
+    litellm_params:
+      model: deepseek/deepseek-reasoner
+      api_key: os.environ/DEEPSEEK_API_KEY
+
+  # --- Google Gemini: Pro / Flash (GEMINI_API_KEY, 国外模型, 如只需国内可删) ---
+  - model_name: gemini-2.5-pro
+    litellm_params:
+      model: gemini/gemini-2.5-pro
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
+  # --- 智谱 GLM-4 全系 (ZHIPUAI_API_KEY) ---
+  - model_name: glm-4-plus
+    litellm_params:
+      model: openai/glm-4-plus
+      api_key: os.environ/ZHIPUAI_API_KEY
+      api_base: https://open.bigmodel.cn/api/paas/v4/
+  - model_name: glm-4-air
+    litellm_params:
+      model: openai/glm-4-air
+      api_key: os.environ/ZHIPUAI_API_KEY
+      api_base: https://open.bigmodel.cn/api/paas/v4/
+  - model_name: glm-4-airx
+    litellm_params:
+      model: openai/glm-4-airx
+      api_key: os.environ/ZHIPUAI_API_KEY
+      api_base: https://open.bigmodel.cn/api/paas/v4/
+  - model_name: glm-4-long
+    litellm_params:
+      model: openai/glm-4-long
+      api_key: os.environ/ZHIPUAI_API_KEY
+      api_base: https://open.bigmodel.cn/api/paas/v4/
+
+  # --- 阿里通义千问 Qwen 全系 (DASHSCOPE_API_KEY) ---
+  - model_name: qwen-turbo
+    litellm_params:
+      model: openai/qwen-turbo
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - model_name: qwen-long
+    litellm_params:
+      model: openai/qwen-long
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - model_name: qwen2.5-72b
+    litellm_params:
+      model: openai/qwen2.5-72b-instruct
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - model_name: qwen2.5-32b
+    litellm_params:
+      model: openai/qwen2.5-32b-instruct
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - model_name: qwen2.5-14b
+    litellm_params:
+      model: openai/qwen2.5-14b-instruct
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+  - model_name: qwen2.5-7b
+    litellm_params:
+      model: openai/qwen2.5-7b-instruct
+      api_key: os.environ/DASHSCOPE_API_KEY
+      api_base: https://dashscope.aliyuncs.com/compatible-mode/v1
+
+  # --- 百度千帆 ERNIE 全系 (QIANFAN_ACCESS_KEY / QIANFAN_SECRET_KEY) ---
+  - model_name: ernie-4.5-8k
+    litellm_params:
+      model: openai/ernie-4.5-8k
+      api_key: os.environ/QIANFAN_ACCESS_KEY
+      api_secret: os.environ/QIANFAN_SECRET_KEY
+      api_base: https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro
+  - model_name: ernie-3.5-8k
+    litellm_params:
+      model: openai/ernie-3.5-8k
+      api_key: os.environ/QIANFAN_ACCESS_KEY
+      api_secret: os.environ/QIANFAN_SECRET_KEY
+      api_base: https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro
+  - model_name: ernie-speed
+    litellm_params:
+      model: openai/ernie-speed
+      api_key: os.environ/QIANFAN_ACCESS_KEY
+      api_secret: os.environ/QIANFAN_SECRET_KEY
+      api_base: https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro
+  - model_name: ernie-lite
+    litellm_params:
+      model: openai/ernie-lite
+      api_key: os.environ/QIANFAN_ACCESS_KEY
+      api_secret: os.environ/QIANFAN_SECRET_KEY
+      api_base: https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions_pro
+
+  # --- 月之暗面 Kimi 长上下文 (MOONSHOT_API_KEY) ---
+  - model_name: kimi-32k
+    litellm_params:
+      model: moonshot/moonshot-v1-32k
+      api_key: os.environ/MOONSHOT_API_KEY
+  - model_name: kimi-128k
+    litellm_params:
+      model: moonshot/moonshot-v1-128k
+      api_key: os.environ/MOONSHOT_API_KEY
+
+  # --- 字节豆包 Doubao (VOLCENGINE_API_KEY, 走方舟 /api/v3 普通通道) ---
+  - model_name: doubao-pro-32k
+    litellm_params:
+      model: volcengine/doubao-pro-32k
+      api_key: os.environ/VOLCENGINE_API_KEY
+      api_base: https://ark.cn-beijing.volces.com/api/v3
+  - model_name: doubao-lite-32k
+    litellm_params:
+      model: volcengine/doubao-lite-32k
+      api_key: os.environ/VOLCENGINE_API_KEY
+      api_base: https://ark.cn-beijing.volces.com/api/v3
+
+  # --- MiniMax (MINIMAX_API_KEY + MINIMAX_GROUP_ID, GroupId 必填) ---
+  - model_name: minimax-abab6.5
+    litellm_params:
+      model: minimax/abab6.5-chat
+      api_key: os.environ/MINIMAX_API_KEY
+      api_base: https://api.minimax.chat/v1/
+      group_id: os.environ/MINIMAX_GROUP_ID
+  - model_name: minimax-abab6.5s
+    litellm_params:
+      model: minimax/abab6.5s-chat
+      api_key: os.environ/MINIMAX_API_KEY
+      api_base: https://api.minimax.chat/v1/
+      group_id: os.environ/MINIMAX_GROUP_ID
+
+  # --- 百川 Baichuan (BAICHUAN_API_KEY) ---
+  - model_name: baichuan2-53b
+    litellm_params:
+      model: openai/baichuan2-53b
+      api_key: os.environ/BAICHUAN_API_KEY
+      api_base: https://api.baichuan-ai.com/v1
+  - model_name: baichuan2-13b
+    litellm_params:
+      model: openai/baichuan2-13b-chat
+      api_key: os.environ/BAICHUAN_API_KEY
+      api_base: https://api.baichuan-ai.com/v1
+
+  # --- 阶跃星辰 Step (STEP_API_KEY) ---
+  - model_name: step-1-flash
+    litellm_params:
+      model: openai/step-1-flash
+      api_key: os.environ/STEP_API_KEY
+      api_base: https://api.stepfun.com/v1
+  - model_name: step-2
+    litellm_params:
+      model: openai/step-2
+      api_key: os.environ/STEP_API_KEY
+      api_base: https://api.stepfun.com/v1
+
+  # --- 讯飞星火 Spark (需 IFLYTEK_SPARK_* 四项; app_id/api_version 见下方, 调用前可核对 litellm spark provider 参数) ---
+  - model_name: spark-pro
+    litellm_params:
+      model: spark/spark-pro
+      api_key: os.environ/IFLYTEK_SPARK_API_KEY
+      api_secret: os.environ/IFLYTEK_SPARK_API_SECRET
+      spark_app_id: os.environ/IFLYTEK_SPARK_APP_ID
+      api_version: os.environ/IFLYTEK_SPARK_API_VERSION
+
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
   debug: false
