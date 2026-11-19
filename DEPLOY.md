@@ -1,6 +1,6 @@
-# 部署清单：把 Token 中转站给别人用（上公司服务器）
+# 部署清单：把 Token 中转站部署到服务器给别人用
 
-> 目标：把本机 `localhost:8000` 的 token 中转站，变成公司内网/公网上**别人也能用**、且带鉴权+计费的多用户服务。
+> 目标：把本机 `localhost:8000` 的 token 中转站，变成内网/公网上**别人也能用**、且带鉴权+计费的多用户服务。
 > 配套文档：`7.md`（功能/客户端对接/计费原理）、`gateway-go/ARCHITECTURE.md`（架构）。
 
 ---
@@ -20,7 +20,7 @@
 
 ## 二、服务器准备
 
-- [ ] 一台 Linux 服务器（公司内网或公网均可），装好 **Docker + docker compose**
+- [ ] 一台 Linux 服务器（内网或公网均可），装好 **Docker + docker compose**
 - [ ] 把整个 `litellm-gateway/` 目录拷过去（含 `.env`、`nginx/`、`litellm-config.yaml`、`gateway-go/`、各 compose 服务）
 - [ ] **只对外暴露 443**；`8000`(gateway)、`4000`(litellm)、`5432`(postgres)、`3000/9090`(Grafana/Prometheus) 只在 docker 网络内，防火墙**不要**对公网开放
 - [ ] 网关改 Go 代码后必须重新交叉编译：`cd gateway-go && CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o gateway . && cd .. && docker compose up -d --build gateway-go`（否则容器内还是旧二进制）
@@ -40,7 +40,7 @@
 ## 四、域名 + HTTPS 证书
 
 - [ ] 在 `nginx/conf.d/default.conf` 把两处 `server_name localhost` 改成你的域名（如 `relay.yourcorp.com`）
-- [ ] 替换 `nginx/ssl/cert.pem` + `key.pem` 为真实证书（Let's Encrypt 或公司 CA）
+- [ ] 替换 `nginx/ssl/cert.pem` + `key.pem` 为真实证书（Let's Encrypt 或自建 CA）
   - Let's Encrypt：`certbot certonly` 后把 fullchain.pem / privkey.pem 复制覆盖即可
 - [ ] 防火墙放行 `443`（以及 `80` 用于 ACME 验证 / 80→443 跳转，nginx 已配 80 跳转）
 - [ ] 重启 nginx：`docker compose up -d nginx` 或 `docker compose exec nginx nginx -s reload`
@@ -68,8 +68,8 @@ curl -k -X POST https://你的域名/v1/responses \
 ## 六、给别人开账号（代建流程，推荐可控）
 
 1. 浏览器开 `https://你的域名/login.html`，用 admin 登录
-2. 调后台：`POST /api/admin/users` `{ "username":"同事A", "password":"...", "role":"user", "initial_balance":50 }`
-3. 让同事登录 `https://你的域名/login.html` → `POST /api/keys` `{ "key_name":"my-key" }` → 拿到 `api_key`（**明文只返回一次，务必保存**）
+2. 调后台：`POST /api/admin/users` `{ "username":"user-a", "password":"...", "role":"user", "initial_balance":50 }`
+3. 让对方登录 `https://你的域名/login.html` → `POST /api/keys` `{ "key_name":"my-key" }` → 拿到 `api_key`（**明文只返回一次，务必保存**）
    - 或你代建 Key 后把 `api_key` 发给他
 4. 把「网关地址 + 他的 `api_key`」发给他，他按第七节配客户端即可
 5. 余额用完前你 `POST /api/admin/users/:id/recharge` 充值；或在后台看「数据看板」对账
@@ -78,7 +78,7 @@ curl -k -X POST https://你的域名/v1/responses \
 
 ---
 
-## 七、同事客户端配置
+## 七、客户端配置
 
 **Claude Code**
 ```bash

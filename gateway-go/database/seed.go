@@ -54,30 +54,32 @@ func seedDefaultData() {
 	// seed model pricing：列出默认支持的模型及其单价。
 	// 在这一块可以具体改动对外的模型价格
 	// 顺序：模型名 / 每千 prompt token 价格 / 每千 completion token 价格。
+	// 示例定价：以下全部为占位值，请按你的实际成本填写后再部署；
+	// 也可以不填，启动后在管理后台改价（此处仅做首次初始化，已存在的记录不会被覆盖）。
 	pricing := []struct{ Name, Prompt, Completion string }{
 	// DeepSeek
-	{"deepseek-chat", "0.00014", "0.00028"},
-	{"deepseek-coder", "0.00014", "0.00028"},
+	{"deepseek-chat", "0.001", "0.001"},
+	{"deepseek-coder", "0.001", "0.001"},
 
 	// 智谱 GLM
-	{"glm-4-plus", "0.10", "0.10"},
+	{"glm-4-plus", "0.001", "0.001"},
 	{"glm-4-flash", "0.001", "0.001"},
-	{"glm-4v-plus", "0.10", "0.10"},
+	{"glm-4v-plus", "0.001", "0.001"},
 
 	// Kimi (Moonshot)
-	{"moonshot-v1-8k", "0.012", "0.012"},
-	{"moonshot-v1-32k", "0.024", "0.024"},
-	{"moonshot-v1-128k", "0.060", "0.060"},
+	{"moonshot-v1-8k", "0.001", "0.001"},
+	{"moonshot-v1-32k", "0.001", "0.001"},
+	{"moonshot-v1-128k", "0.001", "0.001"},
 
 	// 通义千问
-	{"qwen-turbo", "0.0008", "0.0008"},
-	{"qwen-plus", "0.004", "0.008"},
-	{"qwen-max", "0.02", "0.06"},
-	{"qwen-long", "0.0005", "0.001"},
+	{"qwen-turbo", "0.001", "0.001"},
+	{"qwen-plus", "0.001", "0.001"},
+	{"qwen-max", "0.001", "0.001"},
+	{"qwen-long", "0.001", "0.001"},
 
 	// 百度千帆
-	{"ernie-4.0-turbo", "0.02", "0.02"},
-	{"ernie-3.5-turbo", "0.004", "0.004"},
+	{"ernie-4.0-turbo", "0.001", "0.001"},
+	{"ernie-3.5-turbo", "0.001", "0.001"},
 	{"ernie-speed", "0.001", "0.001"},
 }
 	for _, p := range pricing {

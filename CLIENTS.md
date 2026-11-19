@@ -5,7 +5,7 @@
 
 > 网关地址约定：
 > - **本机直连（开发/自测）**：`http://localhost:8000`（gateway-go 自身端口）
-> - **对外/同事访问（HTTPS）**：`https://<你的IP或域名>:8443`（经 nginx，已改端口）
+> - **对外访问（HTTPS）**：`https://<你的IP或域名>:8443`（经 nginx，已改端口）
 > - 管理后台 UI：`https://<IP/域名>:8443/app/`
 > - 后台接口：`https://<IP/域名>:8443/api/`
 
@@ -115,14 +115,14 @@ Claude Code 通过 npm 安装，二进制在 `~/.npm-global/bin/claude`。
 
 ---
 
-## 三、对外给同事 / 其他设备
+## 三、对外给其他用户 / 其他设备
 
 | 客户端 | base_url | 鉴权 | 模型名 |
 |---|---|---|---|
 | Codex | `https://<IP/域名>:8443/v1` | `Authorization: Bearer <网关Key>` | `ark-code-latest` |
 | Claude Code | `https://<IP/域名>:8443`（设 `ANTHROPIC_BASE_URL`） | `ANTHROPIC_API_KEY=<网关Key>` | `huoshan-code` |
 
-- 同事需要先向你在网关后台（`/api/admin/users` 或管理 UI）**建账号、发 Key**，用自己的 Key 调，独立计费。
+- 其他人需要先由你在网关后台（`/api/admin/users` 或管理 UI）**建账号、发 Key**，用自己的 Key 调，独立计费。
 - 对外访问需 HTTPS（Claude Code / Codex 对非 localhost 的 http 会拒绝）。证书为 `localhost` 自签，浏览器/客户端会报证书警告属正常；正式对外用见 `DEPLOY.md` 换真域名证书。
 
 ---
